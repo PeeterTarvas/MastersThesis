@@ -11,6 +11,11 @@ Algorithm: Single-swap local search (5-approximation, Arya et al. 2004),
 import numpy as np
 from typing import Optional
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import csv_loader
+from coreset import compute_fair_coreset
+
 
 # ---------------------------------------------------------------------------
 # Distance helpers
@@ -38,18 +43,21 @@ def pairwise_l1(X: np.ndarray, centers: np.ndarray) -> np.ndarray:
     return np.sum(np.abs(X[:, np.newaxis, :] - centers[np.newaxis, :, :]), axis=2)
 
 
-def assignment_cost(X: np.ndarray, centers: np.ndarray) -> tuple[np.ndarray, float]:
+def assignment_cost(X: np.ndarray, centers: np.ndarray, _weights: Optional[np.ndarray] = None) -> tuple[np.ndarray, float]:
     """
     Assign each point to its nearest center and return total L1 cost.
 
     Returns
     -------
     labels : (n,) integer array of center indices
-    cost   : total assignment cost (sum of L1 distances)
+    cost   : sum_i  w_i * d(x_i, assigned center)
     """
+    if _weights is None:
+        _weights = np.ones(len(X))
     D = pairwise_l1(X, centers)
     labels = np.argmin(D, axis=1)
-    cost = float(np.sum(D[np.arange(len(X)), labels]))
+    min_dists = D[np.arange(len(X)), labels]
+    cost = float(np.dot(_weights, min_dists))
     return labels, cost
 
 
@@ -58,9 +66,10 @@ def assignment_cost(X: np.ndarray, centers: np.ndarray) -> tuple[np.ndarray, flo
 # ---------------------------------------------------------------------------
 
 def kmedian_plus_plus_seed(
-    X: np.ndarray,
+    x: np.ndarray,
     k: int,
     rng: np.random.Generator,
+    _weights: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     Probabilistic seeding: choose first center uniformly at random, then
@@ -71,22 +80,31 @@ def kmedian_plus_plus_seed(
     -------
     centers : (k, d) array of initial center coordinates (rows of X)
     """
-    n = len(X)
+    if _weights is None:
+        _weights = np.ones(len(x))
+
+    n = len(x)
     chosen_indices = []
 
     # First center: uniform random
-    idx = int(rng.integers(0, n))
+    probs = _weights / _weights.sum()
+    idx = int(rng.choice(n, p=probs))
     chosen_indices.append(idx)
 
     for _ in range(1, k):
-        current_centers = X[chosen_indices]
-        D = pairwise_l1(X, current_centers)
-        min_dists = D.min(axis=1)
-        probs = min_dists / min_dists.sum()
+        current_centers = x[chosen_indices]
+        d = pairwise_l1(x, current_centers)
+        min_dists = d.min(axis=1)
+        weighted_dists = _weights * min_dists # w_i * d(x_i, nearest center)
+        total = weighted_dists.sum()
+        if total == 0:
+            probs = np.ones(n) / n  # all remaining points are already at a center; pick uniformly
+        else:
+            probs = weighted_dists / total
         idx = int(rng.choice(n, p=probs))
         chosen_indices.append(idx)
 
-    return X[chosen_indices].copy()
+    return x[chosen_indices].copy()
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +114,7 @@ def kmedian_plus_plus_seed(
 def _local_search_kmedian(
     X: np.ndarray,
     k: int,
+    _weights: np.ndarray,
     init_centers: np.ndarray,
     max_iter: int = 100,
 ) -> tuple[np.ndarray, np.ndarray, float]:
@@ -114,7 +133,7 @@ def _local_search_kmedian(
     """
     n, d = X.shape
     centers = init_centers.copy()
-    labels, cost = assignment_cost(X, centers)
+    labels, cost = assignment_cost(X, centers, _weights)
 
     # Track which points are currently centers (by index)
     # We work with actual coordinate copies; centers need not be data points
@@ -126,7 +145,6 @@ def _local_search_kmedian(
         best_swap = None  # (old_center_idx_in_centers, new_point_idx_in_X)
 
         for ci in range(k):
-            old_center = centers[ci]
             for xi in range(n):
                 candidate = X[xi]
                 if tuple(candidate.tolist()) in center_set:
@@ -135,7 +153,7 @@ def _local_search_kmedian(
                 # Build trial centers with the swap
                 trial_centers = centers.copy()
                 trial_centers[ci] = candidate
-                _, trial_cost = assignment_cost(X, trial_centers)
+                _, trial_cost = assignment_cost(X, trial_centers, _weights)
                 gain = cost - trial_cost
                 if gain > best_gain:
                     best_gain = gain
@@ -148,7 +166,7 @@ def _local_search_kmedian(
         center_set.discard(tuple(centers[ci].tolist()))
         centers[ci] = X[xi].copy()
         center_set.add(tuple(centers[ci].tolist()))
-        labels, cost = assignment_cost(X, centers)
+        labels, cost = assignment_cost(X, centers, _weights)
 
     return centers, labels, cost
 
@@ -160,6 +178,7 @@ def _local_search_kmedian(
 def kmedian(
     X: np.ndarray,
     k: int,
+    _weights: Optional[np.ndarray] = None,
     n_trials: int = 5,
     max_iter: int = 100,
     random_seed: Optional[int] = None,
@@ -189,13 +208,21 @@ def kmedian(
     in the thesis (metric space with L1 distance).
     """
     X = np.asarray(X, dtype=float)
+
+    if _weights is not None:
+        _weights = np.asarray(_weights, dtype=float)
+        assert len(_weights) == len(X), "weights must have same length as X"
+        assert np.all(_weights >= 0), "weights must be non-negative"
+    else:
+        _weights = np.ones(len(X))
+
     rng = np.random.default_rng(random_seed)
 
     best_centers, best_labels, best_cost = None, None, np.inf
 
     for trial in range(n_trials):
-        init_centers = kmedian_plus_plus_seed(X, k, rng)
-        centers, labels, cost = _local_search_kmedian(X, k, init_centers, max_iter)
+        init_centers = kmedian_plus_plus_seed(X, k, rng, _weights)
+        centers, labels, cost = _local_search_kmedian(X, k, _weights, init_centers, max_iter)
         if cost < best_cost:
             best_centers = centers
             best_labels = labels
@@ -204,19 +231,54 @@ def kmedian(
     return best_centers, best_labels, best_cost
 
 
-# ---------------------------------------------------------------------------
-# Quick smoke test
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    # Three well-separated blobs
-    X = np.vstack([
-        rng.normal([0, 0], 0.1, (30, 2)),
-        rng.normal([5, 0], 0.1, (30, 2)),
-        rng.normal([0, 5], 0.1, (30, 2)),
-    ])
-    centers, labels, cost = kmedian(X, k=3, n_trials=5, random_seed=42)
-    print(f"Cost: {cost:.4f}")
-    print(f"Centers:\n{centers}")
-    print(f"Cluster sizes: {np.bincount(labels)}")
+    df: pd.DataFrame = csv_loader.load_csv_chunked("us_census_puma_data.csv", csv_loader.LOAD_COLS, csv_loader.LOAD_DTYPES, 100_000, 200_000)
+
+    coreset_df, scaler = compute_fair_coreset(df, n_locations=30000, random_seed=42)
+
+    k = 30
+    X = coreset_df[['Lat_Scaled', 'Lon_Scaled']].values
+    w = coreset_df['Weight'].values.astype(float)
+    centers, labels, cost = kmedian(X, k, w, 10, 100)
+    result_df = coreset_df.copy()
+    result_df['Cluster'] = labels
+
+    print(f"[Baseline k-median] k={k}, weighted cost = {cost:,.2f}")
+
+    plt.figure(figsize=(10, 6), facecolor='white')
+    ax = plt.gca()
+    ax.set_facecolor('white')
+    scatter = ax.scatter(
+        result_df['Longitude'],
+        result_df['Latitude'],
+        c=result_df['Cluster'],
+        cmap='tab20',
+        alpha=0.4,
+        s=result_df['Weight'] / result_df['Weight'].max() * 10,  # size ∝ weight
+        linewidths=0,
+    )
+    plt.colorbar(scatter, ax=ax, label='Cluster')
+    plt.title(f'k-Median Clustering (k={k})', color='black')
+    plt.xlabel('Longitude', color='black')
+    plt.ylabel('Latitude', color='black')
+    plt.tick_params(colors='black')
+    plt.tight_layout()
+    plt.savefig('kmedian_clusters.png', dpi=150)
+    plt.show()
+
+
+
+
+    #rng = np.random.default_rng(0)
+    #X = np.vstack([
+    #    rng.normal([0, 0], 0.1, (30, 2)),
+    #    rng.normal([5, 0], 0.1, (30, 2)),
+    #    rng.normal([0, 5], 0.1, (30, 2)),
+    #])
+    #centers, labels, cost = kmedian(X, k=3, n_trials=5, random_seed=42)
+    #print(f"Cost: {cost:.4f}")
+    #print(f"Centers:\n{centers}")
+    #print(f"Cluster sizes: {np.bincount(labels)}")
+
+
+    #X_out, weights = compute_fair_coreset(X_norm)
