@@ -78,8 +78,6 @@ def compute_fair_coreset(
     n_pts = len(spatial_coords)
 
     point_labels   = np.empty(n_pts, dtype=np.int32)
-    best_dists_buf = np.full(tile_points, np.inf, dtype=np.float32)
-
     for p_start in range(0, n_pts, tile_points):
         p_end  = min(p_start + tile_points, n_pts)
         pts    = spatial_coords[p_start:p_end]          # (tp, 2)
@@ -108,7 +106,7 @@ def compute_fair_coreset(
         if (p_start // tile_points) % 20 == 0:
             print(f"  [Coreset] assigned {min(p_end, n_pts):,} / {n_pts:,} points...", end="\r")
 
-    df_core['Assigned_Center_Idx'] = labels
+    df_core['Assigned_Center_Idx'] = point_labels
 
     print("Consolidating points by Center and Group to generate weights...")
     # This matches the paper: "we put p into S' with color i and weight n_{p,i}"

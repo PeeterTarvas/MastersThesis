@@ -141,6 +141,7 @@ def _local_search_kmedian(
     center_set = set(map(tuple, centers.tolist()))
 
     for iteration in range(max_iter):
+        print(2)
         best_gain = 0.0
         best_swap = None  # (old_center_idx_in_centers, new_point_idx_in_X)
 
@@ -221,6 +222,7 @@ def kmedian(
     best_centers, best_labels, best_cost = None, None, np.inf
 
     for trial in range(n_trials):
+        print(1)
         init_centers = kmedian_plus_plus_seed(X, k, rng, _weights)
         centers, labels, cost = _local_search_kmedian(X, k, _weights, init_centers, max_iter)
         if cost < best_cost:
@@ -232,14 +234,16 @@ def kmedian(
 
 
 if __name__ == "__main__":
-    df: pd.DataFrame = csv_loader.load_csv_chunked("us_census_puma_data.csv", csv_loader.LOAD_COLS, csv_loader.LOAD_DTYPES, 100_000, 200_000)
+    df: pd.DataFrame = csv_loader.load_csv_chunked("us_census_puma_data.csv",
+                                                   csv_loader.LOAD_COLS, csv_loader.LOAD_DTYPES,
+                                                   10_000, 10_000)
 
-    coreset_df, scaler = compute_fair_coreset(df, n_locations=30000, random_seed=42)
+    coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
 
     k = 30
     X = coreset_df[['Lat_Scaled', 'Lon_Scaled']].values
     w = coreset_df['Weight'].values.astype(float)
-    centers, labels, cost = kmedian(X, k, w, 10, 100)
+    centers, labels, cost = kmedian(X, k, w)
     result_df = coreset_df.copy()
     result_df['Cluster'] = labels
 
