@@ -179,97 +179,84 @@ mass of a group h at center j must be between a lower bound and an upper bound.
 # ---------------------------------------------------------------------------
 
 def _mcf_rounding(
-    x_lp: np.ndarray,
-    group_codes: np.ndarray,
-    weights: np.ndarray,
-    D: np.ndarray,
+        x_lp: np.ndarray,
+        group_codes: np.ndarray,
+        weights: np.ndarray,
+        D: np.ndarray,
 ) -> np.ndarray:
     """
-    Transshipment / min-cost-flow rounding from Lemma 7 of the paper.
-
-    The key guarantee: for each center j and color h,
-        |#(integral points of color h at j) - (fractional mass of color h at j)| < 1
-
-    This means we violate the LP fairness constraints by at most 1 point per
-    (center, color) pair — hence "essentially fair".
-
-    Construction
-    ------------
-    We build a flow network:
-      - Source S
-      - One supply node per point i  (supply = 1, representing one unit of mass)
-      - One demand node per center j  (demand = Σ_i x_{ij}, the LP's total mass)
-      - Arc (i → j) with cost D[i,j] and capacity = 1 (integral assignment)
-      - S → i with capacity 1, cost 0
-      - j → Sink T with capacity Σ_i x_{ij}, cost 0
-
-    We then route an integer flow that minimises cost, which gives the
-    integral assignment with minimum total distance respecting the LP masses.
-
-    For large n*k this can be expensive; for thesis-scale experiments
-    (coreset with ~300–2000 points, k ≤ 50) it is tractable.
+    Final corrected Rounding for Essentially Fair Clustering.
+    Addresses supply/demand mismatch and weighted coreset consistency.
     """
     n, k = x_lp.shape
-
-    # Node indices: 0=source, 1..n=points, n+1..n+k=centers, n+k+1=sink
-    S = 0
-    T = n + k + 1
-    point_node  = lambda i: i + 1
-    center_node = lambda j: n + j + 1
-
-    G = nx.DiGraph()
-    G.add_node(S)
-    G.add_node(T)
+    # Use consistent integer weights for the entire flow network
     w_int = np.maximum(1, np.round(weights).astype(int))
+    total_supply = int(w_int.sum())
 
-    # S → point i  (supply 1 unit per point, weighted by weight)
-    # We treat each point as having integer weight already (coreset weights
-    # are integers; raw-point weights are 1).  For simplicity here we route
-    # one unit per point regardless of weight — the cost encodes weight.
-    for i in range(n):
-        G.add_edge(S, point_node(i), capacity=int(w_int[i]), weight=0)
+    S, T = "source", "sink"
+    G = nx.DiGraph()
 
-    # point i → center j  (cost = w_i * D[i,j], capacity 1)
+    # 1. Source to Points: Supply is the integer weight of the coreset point
     for i in range(n):
+        p_node = f"p_{i}"
+        G.add_edge(S, p_node, capacity=w_int[i], weight=0)
+
+        # 2. Points to Centers: Use distances as costs
+        # Only add edges where the LP assigned fractional mass
         for j in range(k):
-            if x_lp[i, j] > 1e-9:   # only add arcs with nonzero LP mass
-                cost_ij = int(round(weights[i] * D[i, j] * 1e4))  # integer costs
-                G.add_edge(point_node(i), center_node(j),
-                           capacity=int(w_int[i]), weight=cost_ij)
+            if x_lp[i, j] > 1e-9:
+                c_node = f"c_{j}"
+                # Scaled distance to integer for the solver
+                cost_ij = int(round(D[i, j] * 10000))
+                G.add_edge(p_node, c_node, capacity=w_int[i], weight=cost_ij)
 
-    # center j → T  (capacity = rounded LP total mass at j)
+    # 3. Centers to Sink: The bottleneck for Fairness
+    # We must ensure total_demand == total_supply exactly
+    total_demand = 0
+    center_demands = []
+
     for j in range(k):
-        mass_j = int(round((x_lp[:, j]  * weights).sum()))
-        if mass_j > 0:
-            G.add_edge(center_node(j), T, capacity=mass_j, weight=0)
+        # Calculate the total fractional mass the LP sent to this center
+        # using the SAME integer weights used in the supply side
+        mass_j = (x_lp[:, j] * w_int).sum()
+        center_demands.append(mass_j)
 
-    # Add a high-cost overflow arc S→T to ensure feasibility even if
-    # rounding creates small imbalances.
-    G.add_edge(S, T, capacity=n, weight=int(1e9))
+    # Standard rounding can lead to sum(rounded_demands) != total_supply.
+    # We use 'Largest Remainder' rounding to keep supply/demand balanced.
+    rounded_demands = np.floor(center_demands).astype(int)
+    remainder = total_supply - rounded_demands.sum()
+    # Distribute the missing units to the centers with largest fractional parts
+    diffs = np.array(center_demands) - rounded_demands
+    for idx in np.argsort(diffs)[-remainder:]:
+        rounded_demands[idx] += 1
 
-    # Solve min-cost flow
+    for j in range(k):
+        G.add_edge(f"c_{j}", T, capacity=int(rounded_demands[j]), weight=0)
+
+    # 4. Solve Min-Cost Flow
     try:
+        # We need a flow that satisfies the total supply
         flow_dict = nx.min_cost_flow(G)
     except nx.NetworkXUnfeasible:
-        warnings.warn("MCF infeasible — falling back to greedy argmax rounding.")
+        # Fallback to a simpler rounding if the specific capacities fail
+        warnings.warn("MCF Unfeasible: Falling back to greedy rounding.")
         return np.argmax(x_lp, axis=1).astype(np.int32)
 
-    # Extract integer assignment from flow
+    # 5. Extract Labels
     labels = np.full(n, -1, dtype=np.int32)
     for i in range(n):
-        pn = point_node(i)
-        if pn not in flow_dict:
-            continue
-        for j in range(k):
-            cn = center_node(j)
-            if flow_dict[pn].get(cn, 0) > 0:
-                labels[i] = j
-                break
+        p_node = f"p_{i}"
+        # Because of coreset weights, flow might be split (e.g., 10 units to C1, 5 to C2)
+        # We assign the point to the center that received the MOST flow from it.
+        best_center = -1
+        max_f = -1
+        if p_node in flow_dict:
+            for c_node, f in flow_dict[p_node].items():
+                if f > max_f:
+                    max_f = f
+                    best_center = int(c_node.split('_')[1])
 
-    # Any unassigned points (shouldn't happen): fall back to nearest center
-    unassigned = labels == -1
-    if unassigned.any():
-        labels[unassigned] = np.argmin(D[unassigned], axis=1)
+        labels[i] = best_center if best_center != -1 else np.argmin(D[i])
 
     return labels
 

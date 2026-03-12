@@ -447,8 +447,8 @@ if __name__ == "__main__":
         "us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
-        chunk_size=10_000,
-        max_rows=10_000,
+        chunk_size=10_0,
+        max_rows=10_0,
     )
     coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
 

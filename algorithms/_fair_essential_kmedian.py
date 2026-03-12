@@ -1,6 +1,7 @@
 import warnings
 from typing import Optional
 
+import networkx as nx
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
 
@@ -123,7 +124,7 @@ def solve_fair_lp(
     return result.x.reshape((n, nr_of_centers))
 
 
-def _mcf_rounding(
+def min_cost_flow_rounding(
     x_lp: np.ndarray,
     group_codes: np.ndarray,
     weights: np.ndarray,
@@ -131,6 +132,14 @@ def _mcf_rounding(
 ) -> np.ndarray:
     n, k = x_lp.shape
     source_node: int = 0
+    t = n + k + 1
+    point_node  = lambda i: i + 1
+    center_node = lambda j: n + j + 1
+
+    min_cost_flow_graph = nx.DiGraph()
+
+    for i in range(n):
+        p_node = f"p_{i}"
 
 
     return None
@@ -214,7 +223,7 @@ def fair_clustering(
     print("Solving Fair LP...")
     x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bound, upper_bound)
 
-    if not x_lp:
+    if x_lp is None:
         warnings.warn("LP failed — returning unfair k-median assignment.")
         d = pairwise_l1(x, centers)
         labels = np.argmin(d, axis=1).astype(np.int32)
@@ -226,7 +235,7 @@ def fair_clustering(
     print("Min-cost flow rounding...")
     distances_to_centers = pairwise_l1(x, centers)
     labels = mcf_rounding(x_lp, group_codes, weights, distances_to_centers)
-
+    G.add_edge(S, p_node, capacity=w_int[i], weight=0)
 
     return None
 
