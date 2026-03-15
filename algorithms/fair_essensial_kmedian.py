@@ -261,6 +261,180 @@ def _mcf_rounding(
     return labels
 
 
+def min_cost_flow_rounding(
+        x_lp: np.ndarray,
+        group_codes: np.ndarray,
+        weights: np.ndarray,
+        D: np.ndarray,
+) -> np.ndarray:
+    """
+    Round the fractional fair LP solution to an integral assignment via
+    min-cost flow, following Lemma 8 (separable objectives / k-median) of
+    Bercea et al. "On the cost of essentially fair clusterings".
+
+    The paper constructs a graph G whose integral min-cost flow gives an
+    essentially-fair integral assignment with additive fairness violation ≤ 1
+    per color per cluster.
+
+    Graph structure (Figure 1 of the paper)
+    ----------------------------------------
+    For each color h and each point j ∈ col_h:
+        node  v^h_j   supply  = +1
+    For each color h and each center i:
+        node  v^h_i   demand  = floor(mass_h(x, i))
+    For each center i:
+        node  v_i     demand  = B_i  = floor(mass(x,i)) - Σ_h floor(mass_h(x,i))
+    Sink t:           demand  = B    = |P| - Σ_i floor(mass(x,i))
+
+    Edges
+    -----
+    v^h_j → v^h_i   capacity 1, cost d(j,i)   if x_lp[j,i] > 0
+    v^h_i → v_i     capacity 1, cost 0         if frac(mass_h(x,i)) > 0
+    v_i   → t       capacity 1, cost 0         if frac(mass(x,i))   > 0
+
+    Parameters
+    ----------
+    x_lp        : (n, k) fractional assignment from solve_fair_lp
+    group_codes : (n,)   integer color label per point  (0..H-1)
+    weights     : (n,)   point weights  (used as mass — integer-valued for coreset,
+                          fractional for raw points; the paper assumes unit weights
+                          so for weighted points we scale and round appropriately)
+    D           : (n, k) pairwise L1 distances
+
+    Returns
+    -------
+    labels : (n,) integer array — cluster index for each point
+    """
+    n, k = x_lp.shape
+    n_groups = int(group_codes.max()) + 1
+    EPS = 1e-9  # numerical zero threshold
+
+    # ------------------------------------------------------------------ #
+    # Weighted mass: mass_h(x, i) = Σ_{j ∈ col_h} w_j * x_lp[j, i]
+    # mass(x, i)   = Σ_j w_j * x_lp[j, i]
+    # For raw (uniform) data weights=1; for coreset weights are integers.
+    # We work with weighted masses throughout so the same code handles both.
+    # ------------------------------------------------------------------ #
+    # mass_h[h, i]
+    mass_h = np.zeros((n_groups, k), dtype=np.float64)
+    for h in range(n_groups):
+        in_h = (group_codes == h)
+        mass_h[h] = (x_lp[in_h] * weights[in_h, np.newaxis]).sum(axis=0)
+
+    # mass[i] = Σ_h mass_h[h, i]
+    mass = mass_h.sum(axis=0)  # (k,)
+
+    floor_mass_h = np.floor(mass_h)  # (n_groups, k)
+    floor_mass = np.floor(mass)  # (k,)
+
+    # B_i = floor(mass(x,i)) - Σ_h floor(mass_h(x,i))
+    B_i = floor_mass - floor_mass_h.sum(axis=0)  # (k,) — always ≥ 0
+
+    # B = total_weight - Σ_i floor(mass(x,i))
+    total_weight = float(weights.sum())
+    B = total_weight - floor_mass.sum()
+
+    # ------------------------------------------------------------------ #
+    # Node naming scheme (all strings, networkx DiGraph)
+    # ------------------------------------------------------------------ #
+    # "ph_{h}_{j}"  — point node for point j of color h
+    # "ch_{h}_{i}"  — color-center node for center i, color h
+    # "c_{i}"       — center aggregation node for center i
+    # "t"           — global sink
+    # ------------------------------------------------------------------ #
+
+    G = nx.DiGraph()
+    t = "t"
+    G.add_node(t, demand=-int(round(B)))
+
+    # Build color-center nodes and center aggregation nodes
+    for i in range(k):
+        c_node = f"c_{i}"
+        bi_val = int(round(B_i[i]))
+        G.add_node(c_node, demand=-bi_val)
+
+        for h in range(n_groups):
+            ch_node = f"ch_{h}_{i}"
+            floor_mh_i = int(round(floor_mass_h[h, i]))
+            G.add_node(ch_node, demand=-floor_mh_i)
+
+            # Edge v^h_i → v_i  (fractional remainder spills upward)
+            frac_mh = mass_h[h, i] - floor_mass_h[h, i]
+            if frac_mh > EPS:
+                G.add_edge(ch_node, c_node, capacity=1, weight=0)
+
+        # Edge v_i → t  (cluster-level fractional remainder)
+        frac_m = mass[i] - floor_mass[i]
+        if frac_m > EPS:
+            G.add_edge(c_node, t, capacity=1, weight=0)
+
+    # Build point nodes and point→color-center edges
+    for j in range(n):
+        h = int(group_codes[j])
+        w_j = float(weights[j])
+        ph_node = f"ph_{h}_{j}"
+        # Supply = weight of this point (integer for coreset, 1 for raw)
+        G.add_node(ph_node, demand=-int(round(w_j)))  # negative demand = supply
+
+        for i in range(k):
+            if x_lp[j, i] > EPS:
+                ch_node = f"ch_{h}_{i}"
+                # Cost is distance scaled to integer (networkx MCF needs int costs)
+                # Multiply by 1e6 and round to preserve relative ordering.
+                cost_int = int(round(D[j, i] * 1_000_000))
+                G.add_edge(ph_node, ch_node, capacity=int(round(w_j)), weight=cost_int)
+
+    # ------------------------------------------------------------------ #
+    # Solve min-cost flow
+    # networkx min_cost_flow requires that Σ demands = 0.
+    # Our construction: supply = Σ_j w_j = total_weight
+    #                   demand = Σ_i floor(mass(x,i)) + B = total_weight  ✓
+    # ------------------------------------------------------------------ #
+    try:
+        flow_dict = nx.min_cost_flow(G)
+    except nx.NetworkXUnfeasible:
+        warnings.warn(
+            "Min-cost flow was infeasible — falling back to greedy rounding."
+        )
+        return np.argmin(D, axis=1).astype(np.int32)
+    except Exception as e:
+        warnings.warn(f"Min-cost flow failed ({e}) — falling back to greedy rounding.")
+        return np.argmin(D, axis=1).astype(np.int32)
+
+    # ------------------------------------------------------------------ #
+    # Extract integer assignment from flow
+    # Point j is assigned to whichever center i carries positive flow on
+    # the edge  ph_{h}_{j} → ch_{h}_{i}.
+    # For weighted coreset points (weight > 1) we track each unit of flow
+    # as one "copy" of point j assigned to center i.  Since all copies of
+    # the same point are identical we just need any center with flow > 0.
+    # ------------------------------------------------------------------ #
+    labels = np.full(n, -1, dtype=np.int32)
+    for j in range(n):
+        h = int(group_codes[j])
+        ph_node = f"ph_{h}_{j}"
+        if ph_node not in flow_dict:
+            # No outgoing flow — assign to nearest center as fallback
+            labels[j] = int(np.argmin(D[j]))
+            continue
+        best_i = -1
+        best_cost = np.inf
+        for i in range(k):
+            ch_node = f"ch_{h}_{i}"
+            f_val = flow_dict[ph_node].get(ch_node, 0)
+            if f_val > 0 and D[j, i] < best_cost:
+                best_cost = D[j, i]
+                best_i = i
+        if best_i == -1:
+            best_i = int(np.argmin(D[j]))
+        labels[j] = best_i
+
+    if (labels == -1).any():
+        missing = np.where(labels == -1)[0]
+        warnings.warn(f"{len(missing)} points unassigned after MCF — using nearest center.")
+        labels[missing] = np.argmin(D[missing], axis=1).astype(np.int32)
+
+    return labels
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

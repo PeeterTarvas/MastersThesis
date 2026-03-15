@@ -131,19 +131,136 @@ def min_cost_flow_rounding(
     D: np.ndarray,
 ) -> np.ndarray:
     n, k = x_lp.shape
-    source_node: int = 0
-    t = n + k + 1
-    point_node  = lambda i: i + 1
-    center_node = lambda j: n + j + 1
+    nr_groups = int(group_codes.max()) + 1
 
-    min_cost_flow_graph = nx.DiGraph()
+    # ------------------------------------------------------------------ #
+    # Weighted mass: mass_group(x, i) = Σ_{j ∈ col_h} w_j * x_lp[j, i]
+    # mass(x, i)   = Σ_j w_j * x_lp[j, i]
+    # For raw (uniform) data weights=1; for coreset weights are integers.
+    # We work with weighted masses throughout so the same code handles both.
+    # ------------------------------------------------------------------ #
+    mass_group = np.zeros((nr_groups, k), dtype=np.float64)
+    for row_indx in range(nr_groups):
+        is_in_group = (group_codes == row_indx)
+        mass_group[row_indx] = (x_lp[is_in_group] * weights[is_in_group, np.newaxis]).sum(axis=0)
+    mass = mass_group.sum(axis=0)
+    floor_mass_group = np.floor(mass_group)
+    floor_mass = np.floor(mass)
+    B_i = floor_mass - floor_mass_group.sum(axis=0)
+    # B = total_weight - Σ_i floor(mass(x,i))
+    total_weight = float(weights.sum())
+    B = total_weight - floor_mass.sum()
 
-    for i in range(n):
-        p_node = f"p_{i}"
+    # ------------------------------------------------------------------ #
+    # Node naming scheme (all strings, networkx DiGraph)
+    # ------------------------------------------------------------------ #
+    # "ph_{h}_{j}"  — point node for point j of color h
+    # "ch_{h}_{i}"  — color-center node for center i, color h
+    # "c_{i}"       — center aggregation node for center i
+    # "t"           — global sink
+    # ------------------------------------------------------------------ #
+    G = nx.DiGraph()
+    global_sink = "t"
+    G.add_node(global_sink, demand=-int(round(B)))
+
+    for col in range(k):
+        color_node = f"c_{col}"
+        bi_val = int(round(B_i[col]))
+        G.add_node(color_node, demand=-bi_val)
+
+        for group_nr in range(nr_groups):
+            ch_node = f"ch_{group_nr}_{col}"
+            floor_mh_i = int(round(floor_mass_group[group_nr, col]))
+            G.add_node(ch_node, demand=-floor_mh_i)
+
+            frac_mh = mass_group[group_nr, col] - floor_mass_group[group_nr, col]
+            if frac_mh > 0:
+                G.add_edge(ch_node, color_node, capacity=1, weight=0)
+    # ------------------------------------------------------------------ #
+    # Solve min-cost flow
+    # networkx min_cost_flow requires that Σ demands = 0.
+    # Our construction: supply = Σ_j w_j = total_weight
+    #                   demand = Σ_i floor(mass(x,i)) + B = total_weight  ✓
+    # ------------------------------------------------------------------ #
+    try:
+        flow_dict = nx.min_cost_flow(G)
+    except nx.NetworkXUnfeasible:
+        warnings.warn(
+            "Min-cost flow was infeasible — falling back to greedy rounding."
+        )
+        return np.argmin(D, axis=1).astype(np.int32)
+    except Exception as e:
+        warnings.warn(f"Min-cost flow failed ({e}) — falling back to greedy rounding.")
+        return np.argmin(D, axis=1).astype(np.int32)
+
+    # ------------------------------------------------------------------ #
+    # Extract integer assignment from flow
+    # Point j is assigned to whichever center i carries positive flow on
+    # the edge  ph_{h}_{j} → ch_{h}_{i}.
+    # For weighted coreset points (weight > 1) we track each unit of flow
+    # as one "copy" of point j assigned to center i.  Since all copies of
+    # the same point are identical we just need any center with flow > 0.
+    # ------------------------------------------------------------------ #
+    labels = np.full(n, -1, dtype=np.int32)
+    for row_indx in range(n):
+        group_code = int(group_codes[row_indx])
+        ph_node = f"ph_{group_code}_{row_indx}"
+        if ph_node not in flow_dict:
+            # No outgoing flow — assign to nearest center as fallback
+            labels[row_indx] = int(np.argmin(D[row_indx]))
+            continue
+        best_i = -1
+        best_cost = np.inf
+
+        for col_indx in range(k):
+            ch_node = f"ch_{group_code}_{col_indx}"
+            f_val = flow_dict[ph_node].get(ch_node, 0)
+            if f_val > 0 and D[row_indx, col_indx] < best_cost:
+                best_cost = D[row_indx, col_indx]
+                best_i = col_indx
+        if best_i == -1:
+            best_i = int(np.argmin(D[row_indx]))
+        labels[row_indx] = best_i
+    has_not_been_assigned = (labels == -1)
+    if has_not_been_assigned.any():
+        missing = np.where(labels == -1)[0]
+        warnings.warn(f"{len(missing)} points unassigned after MCF — using nearest center.")
+        labels[missing] = np.argmin(D[missing], axis=1).astype(np.int32)
+    return labels
 
 
-    return None
+def evaluate_fairness(
+    labels: np.ndarray,
+    group_codes: np.ndarray,
+    weights: np.ndarray,
+    group_labels: list,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    k: int,
+):
+    """Print per-cluster fairness via
+    D = pairwise_l1(X, centers)
+    labels = _mcf_rounding(x_lp, group_codes, weights, D)
 
+    cost = float(np.dot(weights, D[np.arange(len(X)), labels]))
+    print(f"  Integral cost after rounding: {cost:,.2f}")lations."""
+    violations = 0
+    for cluster in range(k):
+        at_cluster = labels == cluster
+        total_cluster = weights[at_cluster].sum()
+        if total_cluster == 0:
+            continue
+        for h, lbl in enumerate(group_labels):
+            mass_h = weights[at_cluster & (group_codes == h)].sum()
+            frac = mass_h / total_cluster
+            if frac < lower_bounds[h] - 1e-4 or frac > upper_bounds[h] + 1e-4:
+                violations += 1
+
+    if violations == 0:
+        print("[FairClustering] ✓ All clusters satisfy fairness bounds.")
+    else:
+        print(f"[FairClustering] ⚠  {violations} (cluster, group) pairs violate bounds "
+              "(additive violations ≤ 1 are expected by Lemma 7).")
 
 def fair_clustering(
         df: pd.DataFrame,
@@ -234,23 +351,36 @@ def fair_clustering(
     # --- Step 3: MCF rounding ---
     print("Min-cost flow rounding...")
     distances_to_centers = pairwise_l1(x, centers)
-    labels = mcf_rounding(x_lp, group_codes, weights, distances_to_centers)
-    G.add_edge(S, p_node, capacity=w_int[i], weight=0)
+    labels = min_cost_flow_rounding(x_lp, group_codes, weights, distances_to_centers)
+    cost = float(np.dot(weights, distances_to_centers[np.arange(len(x)), labels]))
+    evaluate_fairness(labels, group_codes, weights, group_labels, lower_bound, upper_bound, k_cluster)
 
-    return None
+    return centers, labels, cost
 
+
+def compute_gpof(
+    fair_cost: float,
+    unfair_cost: float,
+) -> float:
+    """
+    G-PoF = fair_cost / unfair_cost.
+    A value close to 1 means fairness is nearly free.
+    """
+    if unfair_cost == 0:
+        return float('inf')
+    return fair_cost / unfair_cost
 
 if __name__ == "__main__":
  df = csv_loader.load_csv_chunked(
         "us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
-        chunk_size=10_000,
-        max_rows=10_000,
+        chunk_size=10_00,
+        max_rows=10_00,
     )
- coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
+ #coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
  centers_c, labels_c, cost_c = fair_clustering(
-     coreset_df,
+     df,
      feature_cols=['Lat_Scaled', 'Lon_Scaled'],
      protected_group_col='GROUP_ID',
      k_cluster=10,
