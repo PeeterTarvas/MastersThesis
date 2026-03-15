@@ -3,6 +3,9 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
 
+def preprocess_dataset(df: pd.DataFrame):
+    return None
+
 def compute_fair_coreset(
         df: pd.DataFrame,
         n_locations: int = 1000,
@@ -11,6 +14,8 @@ def compute_fair_coreset(
     """
     Computes a Fair Coreset by moving points to common spatial locations
     and consolidating weights by demographic 'color'.
+
+
     """
     print("Discretizing continuous features into categories...")
     df_core = df.copy()

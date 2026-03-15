@@ -163,6 +163,21 @@ def min_cost_flow_rounding(
     global_sink = "t"
     G.add_node(global_sink, demand=-int(round(B)))
 
+    # 1. Add Point Nodes (The 'Source' of the mass)
+    for j in range(n):
+        group_h = group_codes[j]
+        point_node = f"ph_{group_h}_{j}"
+        # Each point has a supply equal to its weight
+        G.add_node(point_node, demand=-int(weights[j]))
+
+        # 2. Add edges from Points to Color-Center nodes
+        for i in range(k):
+            if x_lp[j, i] > 0:
+                ch_node = f"ch_{group_h}_{i}"
+                # Capacity is essentially 'unlimited' or weight[j]
+                # Weight of edge is the distance D[j, i]
+                G.add_edge(point_node, ch_node, capacity=int(weights[j]), weight=D[j, i])
+
     for col in range(k):
         color_node = f"c_{col}"
         bi_val = int(round(B_i[col]))
@@ -372,15 +387,16 @@ def compute_gpof(
 
 if __name__ == "__main__":
  df = csv_loader.load_csv_chunked(
-        "us_census_puma_data.csv",
+        "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
-        chunk_size=10_00,
-        max_rows=10_00,
+        chunk_size=10_000,
+        max_rows=10_000,
     )
- #coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
+ coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
  centers_c, labels_c, cost_c = fair_clustering(
-     df,
+     coreset_df
+     ,
      feature_cols=['Lat_Scaled', 'Lon_Scaled'],
      protected_group_col='GROUP_ID',
      k_cluster=10,
