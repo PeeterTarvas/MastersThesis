@@ -6,7 +6,7 @@ from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
 
 import csv_loader
-from coreset import compute_fair_coreset
+from coreset import compute_fair_coreset, preprocess_dataset
 
 import numpy as np
 import pandas as pd
@@ -125,78 +125,69 @@ def solve_fair_lp(
 
 
 def min_cost_flow_rounding(
-    x_lp: np.ndarray,
-    group_codes: np.ndarray,
-    weights: np.ndarray,
-    D: np.ndarray,
+        x_lp: np.ndarray,
+        group_codes: np.ndarray,
+        weights: np.ndarray,
+        D: np.ndarray,
 ) -> np.ndarray:
     n, k = x_lp.shape
     nr_groups = int(group_codes.max()) + 1
 
-    # ------------------------------------------------------------------ #
-    # Weighted mass: mass_group(x, i) = Σ_{j ∈ col_h} w_j * x_lp[j, i]
-    # mass(x, i)   = Σ_j w_j * x_lp[j, i]
-    # For raw (uniform) data weights=1; for coreset weights are integers.
-    # We work with weighted masses throughout so the same code handles both.
-    # ------------------------------------------------------------------ #
+    # 1. Calculate weighted mass per group per center
     mass_group = np.zeros((nr_groups, k), dtype=np.float64)
-    for row_indx in range(nr_groups):
-        is_in_group = (group_codes == row_indx)
-        mass_group[row_indx] = (x_lp[is_in_group] * weights[is_in_group, np.newaxis]).sum(axis=0)
-    mass = mass_group.sum(axis=0)
-    floor_mass_group = np.floor(mass_group)
-    floor_mass = np.floor(mass)
-    B_i = floor_mass - floor_mass_group.sum(axis=0)
-    # B = total_weight - Σ_i floor(mass(x,i))
-    total_weight = float(weights.sum())
-    B = total_weight - floor_mass.sum()
+    for h in range(nr_groups):
+        is_in_group = (group_codes == h)
+        if is_in_group.any():
+            mass_group[h] = (x_lp[is_in_group] * weights[is_in_group, np.newaxis]).sum(axis=0)
 
-    # ------------------------------------------------------------------ #
-    # Node naming scheme (all strings, networkx DiGraph)
-    # ------------------------------------------------------------------ #
-    # "ph_{h}_{j}"  — point node for point j of color h
-    # "ch_{h}_{i}"  — color-center node for center i, color h
-    # "c_{i}"       — center aggregation node for center i
-    # "t"           — global sink
-    # ------------------------------------------------------------------ #
+    # 2. Integer components and remainders
+    floor_mass_group = np.floor(mass_group + 1e-9).astype(int)
+    frac_mass_group = mass_group - floor_mass_group
+
+    # Total supply must equal total demand
+    # Points supply their weight
+    total_supply = int(round(weights.sum()))
+
     G = nx.DiGraph()
-    global_sink = "t"
-    G.add_node(global_sink, demand=-int(round(B)))
 
-    # 1. Add Point Nodes (The 'Source' of the mass)
+    # 3. Add Point Nodes (Sources)
+    # Each point j supplies its weight w_j
     for j in range(n):
-        group_h = group_codes[j]
-        point_node = f"ph_{group_h}_{j}"
-        # Each point has a supply equal to its weight
-        G.add_node(point_node, demand=-int(weights[j]))
+        point_node = f"p_{j}"
+        w_j = int(round(weights[j]))
+        G.add_node(point_node, demand=-w_j)
 
-        # 2. Add edges from Points to Color-Center nodes
+        # Edges from Point -> Color-Center (ch)
+        # We only add edges where the LP assigned some mass
+        h = group_codes[j]
         for i in range(k):
-            if x_lp[j, i] > 0:
-                ch_node = f"ch_{group_h}_{i}"
-                # Capacity is essentially 'unlimited' or weight[j]
-                # Weight of edge is the distance D[j, i]
-                G.add_edge(point_node, ch_node, capacity=int(weights[j]), weight=D[j, i])
+            if x_lp[j, i] > 1e-9:
+                G.add_edge(point_node, f"ch_{h}_{i}", weight=D[j, i])
 
-    for col in range(k):
-        color_node = f"c_{col}"
-        bi_val = int(round(B_i[col]))
-        G.add_node(color_node, demand=-bi_val)
+    # 4. Add Intermediate and Sink Nodes
+    # Color-Center Node (ch) -> Center Node (c) -> Global Sink (t)
+    for i in range(k):
+        center_node = f"c_{i}"
+        for h in range(nr_groups):
+            ch_node = f"ch_{h}_{i}"
 
-        for group_nr in range(nr_groups):
-            ch_node = f"ch_{group_nr}_{col}"
-            floor_mh_i = int(round(floor_mass_group[group_nr, col]))
-            G.add_node(ch_node, demand=-floor_mh_i)
+            # This node 'consumes' the guaranteed integer mass
+            # and passes the fractional part forward
+            floor_val = floor_mass_group[h, i]
 
-            frac_mh = mass_group[group_nr, col] - floor_mass_group[group_nr, col]
-            if frac_mh > 0:
-                G.add_edge(ch_node, color_node, capacity=1, weight=0)
-    # ------------------------------------------------------------------ #
-    # Solve min-cost flow
-    # networkx min_cost_flow requires that Σ demands = 0.
-    # Our construction: supply = Σ_j w_j = total_weight
-    #                   demand = Σ_i floor(mass(x,i)) + B = total_weight  ✓
-    # ------------------------------------------------------------------ #
+            # Edge from Point to ch handles the 'floor' mass naturally
+            # Now we constrain the flow from ch to the center
+            # Capacity is floor + 1 (to allow for the fractional rounding)
+            G.add_edge(ch_node, center_node, capacity=floor_val + 1, weight=0)
+
+    # 5. Sink logic
+    global_sink = "sink_t"
+    G.add_node(global_sink, demand=total_supply)
+    for i in range(k):
+        # Allow each center to send its total collected mass to the sink
+        G.add_edge(f"c_{i}", global_sink, weight=0)
+
+    # 6. Solve
     try:
         flow_dict = nx.min_cost_flow(G)
     except nx.NetworkXUnfeasible:
@@ -208,39 +199,22 @@ def min_cost_flow_rounding(
         warnings.warn(f"Min-cost flow failed ({e}) — falling back to greedy rounding.")
         return np.argmin(D, axis=1).astype(np.int32)
 
-    # ------------------------------------------------------------------ #
-    # Extract integer assignment from flow
-    # Point j is assigned to whichever center i carries positive flow on
-    # the edge  ph_{h}_{j} → ch_{h}_{i}.
-    # For weighted coreset points (weight > 1) we track each unit of flow
-    # as one "copy" of point j assigned to center i.  Since all copies of
-    # the same point are identical we just need any center with flow > 0.
-    # ------------------------------------------------------------------ #
-    labels = np.full(n, -1, dtype=np.int32)
-    for row_indx in range(n):
-        group_code = int(group_codes[row_indx])
-        ph_node = f"ph_{group_code}_{row_indx}"
-        if ph_node not in flow_dict:
-            # No outgoing flow — assign to nearest center as fallback
-            labels[row_indx] = int(np.argmin(D[row_indx]))
-            continue
-        best_i = -1
-        best_cost = np.inf
+    # 7. Extract Labels
+    labels = np.zeros(n, dtype=np.int32)
+    for j in range(n):
+        h = group_codes[j]
+        point_node = f"p_{j}"
+        # Find which center the flow went to
+        assigned_center = -1
+        for i in range(k):
+            ch_node = f"ch_{h}_{i}"
+            if flow_dict.get(point_node, {}).get(ch_node, 0) > 0:
+                assigned_center = i
+                break
 
-        for col_indx in range(k):
-            ch_node = f"ch_{group_code}_{col_indx}"
-            f_val = flow_dict[ph_node].get(ch_node, 0)
-            if f_val > 0 and D[row_indx, col_indx] < best_cost:
-                best_cost = D[row_indx, col_indx]
-                best_i = col_indx
-        if best_i == -1:
-            best_i = int(np.argmin(D[row_indx]))
-        labels[row_indx] = best_i
-    has_not_been_assigned = (labels == -1)
-    if has_not_been_assigned.any():
-        missing = np.where(labels == -1)[0]
-        warnings.warn(f"{len(missing)} points unassigned after MCF — using nearest center.")
-        labels[missing] = np.argmin(D[missing], axis=1).astype(np.int32)
+        # Fallback if flow is tiny/missing
+        labels[j] = assigned_center if assigned_center != -1 else np.argmin(D[j])
+
     return labels
 
 
@@ -276,6 +250,40 @@ def evaluate_fairness(
     else:
         print(f"[FairClustering] ⚠  {violations} (cluster, group) pairs violate bounds "
               "(additive violations ≤ 1 are expected by Lemma 7).")
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+def visualize_fair_clusters(df, labels, centers, feature_cols, group_col):
+    """
+    Visualizes the spatial distribution and group composition of clusters.
+    """
+    df_vis = df.copy()
+    df_vis['Cluster'] = labels
+    lat_col, lon_col = feature_cols
+
+    plt.figure(figsize=(14, 6))
+
+    plt.subplot(1, 2, 1)
+    sns.scatterplot(data=df_vis, x=lon_col, y=lat_col, hue='Cluster',
+                    palette='tab10', alpha=0.6, s=15, legend='full')
+    plt.scatter(centers[:, 1], centers[:, 0], c='red', marker='X', s=100, label='Centers')
+    plt.title("Spatial Cluster Distribution")
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    plt.subplot(1, 2, 2)
+    comp = df_vis.groupby(['Cluster', group_col])['Weight'].sum().unstack().fillna(0)
+    comp_norm = comp.div(comp.sum(axis=1), axis=0)
+
+    comp_norm.plot(kind='bar', stacked=True, ax=plt.gca(), legend=False)
+    plt.title("Cluster Group Composition (Proportional)")
+    plt.xlabel("Cluster ID")
+    plt.ylabel("Weight Fraction")
+
+    plt.tight_layout()
+    plt.show()
 
 def fair_clustering(
         df: pd.DataFrame,
@@ -370,6 +378,8 @@ def fair_clustering(
     cost = float(np.dot(weights, distances_to_centers[np.arange(len(x)), labels]))
     evaluate_fairness(labels, group_codes, weights, group_labels, lower_bound, upper_bound, k_cluster)
 
+    visualize_fair_clusters(df, labels, centers, feature_cols, group_labels)
+
     return centers, labels, cost
 
 
@@ -393,13 +403,14 @@ if __name__ == "__main__":
         chunk_size=10_000,
         max_rows=10_000,
     )
- coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
+ ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
+ df = preprocess_dataset(df)
  centers_c, labels_c, cost_c = fair_clustering(
-     coreset_df
+     df
      ,
      feature_cols=['Lat_Scaled', 'Lon_Scaled'],
      protected_group_col='GROUP_ID',
      k_cluster=10,
-     alpha=0.15,
+     alpha=0.2,
      weight_col='Weight',
  )

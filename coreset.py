@@ -4,26 +4,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 
 def preprocess_dataset(df: pd.DataFrame):
-    return None
-
-def compute_fair_coreset(
-        df: pd.DataFrame,
-        n_locations: int = 1000,
-        random_seed: int = 42
-) -> pd.DataFrame:
-    """
-    Computes a Fair Coreset by moving points to common spatial locations
-    and consolidating weights by demographic 'color'.
-
-
-    """
-    print("Discretizing continuous features into categories...")
     df_core = df.copy()
-
-    if n_locations >= len(df):
-        n_locations = len(df)
-
-    #  0-18, 19-35, 36-55, 56+
     df_core['AGE_BIN'] = pd.cut(df_core['AGEP'], bins=[0, 18, 35, 55, 120],
                                 labels=['Youth', 'YoungAdult', 'Adult', 'Senior'])
 
@@ -46,12 +27,33 @@ def compute_fair_coreset(
 
     df_core['Lat_Scaled'] = spatial_coords[:, 0]
     df_core['Lon_Scaled'] = spatial_coords[:, 1]
+    return df_core
+
+def compute_fair_coreset(
+        df: pd.DataFrame,
+        n_locations: int = 1000,
+        random_seed: int = 42
+) -> pd.DataFrame:
+    """
+    Computes a Fair Coreset by moving points to common spatial locations
+    and consolidating weights by demographic 'color'.
+
+
+    """
+
+    if n_locations >= len(df):
+        n_locations = len(df)
+
+    print("Discretizing continuous features into categories...")
+    df_core = preprocess_dataset(df)
 
     print(f"Generating {n_locations} common spatial locations (D1 Sampling)...")
     # We use uniform random sampling for speed on 3M rows to establish the base locations.
     # For a stricter coreset, you can plug in your kmedian_plus_plus_seed here.
     rng = np.random.default_rng(random_seed)
     location_indices = rng.choice(len(df_core), size=n_locations, replace=False)
+    scaler = MinMaxScaler()
+    spatial_coords = scaler.fit_transform(df_core[['Latitude', 'Longitude']])
     centers = spatial_coords[location_indices]
     orig_lats = df_core['Latitude'].values[location_indices]
     orig_lons = df_core['Longitude'].values[location_indices]
