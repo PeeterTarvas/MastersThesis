@@ -141,28 +141,27 @@ def min_cost_flow_rounding(
             mass_group[h] = (x_lp[is_in_group] * weights[is_in_group, np.newaxis]).sum(axis=0)
 
     # 2. Integer components and remainders
-    floor_mass_group = np.floor(mass_group + 1e-9).astype(int)
+    floor_mass_group = np.floor(mass_group + 1e-6).astype(int)
     frac_mass_group = mass_group - floor_mass_group
 
     # Total supply must equal total demand
-    # Points supply their weight
     total_supply = int(round(weights.sum()))
 
     G = nx.DiGraph()
 
     # 3. Add Point Nodes (Sources)
     # Each point j supplies its weight w_j
-    for j in range(n):
-        point_node = f"p_{j}"
-        w_j = int(round(weights[j]))
-        G.add_node(point_node, demand=-w_j)
+    for point in range(n):
+        point_node = f"p_{point}"
+        weighted_point = int(round(weights[point]))
+        G.add_node(point_node, demand=-weighted_point)
 
         # Edges from Point -> Color-Center (ch)
         # We only add edges where the LP assigned some mass
-        h = group_codes[j]
-        for i in range(k):
-            if x_lp[j, i] > 1e-9:
-                G.add_edge(point_node, f"ch_{h}_{i}", weight=D[j, i])
+        h = group_codes[point]
+        for center_indx in range(k):
+            if x_lp[point, center_indx] > 1e-9:
+                G.add_edge(point_node, f"ch_{h}_{center_indx}", weight=D[point, center_indx])
 
     # 4. Add Intermediate and Sink Nodes
     # Color-Center Node (ch) -> Center Node (c) -> Global Sink (t)
@@ -206,11 +205,15 @@ def min_cost_flow_rounding(
         point_node = f"p_{j}"
         # Find which center the flow went to
         assigned_center = -1
+        best_flow = 0
         for i in range(k):
             ch_node = f"ch_{h}_{i}"
-            if flow_dict.get(point_node, {}).get(ch_node, 0) > 0:
-                assigned_center = i
-                break
+            ##if flow_dict.get(point_node, {}).get(ch_node, 0) > 0:
+            ##    assigned_center = i
+            ##    break
+            f_val = flow_dict.get(point_node, {}).get(ch_node, 0)
+            if f_val > best_flow:
+                best_flow, assigned_center = f_val, i
 
         # Fallback if flow is tiny/missing
         labels[j] = assigned_center if assigned_center != -1 else np.argmin(D[j])
@@ -378,7 +381,7 @@ def fair_clustering(
     cost = float(np.dot(weights, distances_to_centers[np.arange(len(x)), labels]))
     evaluate_fairness(labels, group_codes, weights, group_labels, lower_bound, upper_bound, k_cluster)
 
-    visualize_fair_clusters(df, labels, centers, feature_cols, group_labels)
+    visualize_fair_clusters(df, labels, centers, feature_cols, protected_group_col)
 
     return centers, labels, cost
 
@@ -406,8 +409,7 @@ if __name__ == "__main__":
  ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
  df = preprocess_dataset(df)
  centers_c, labels_c, cost_c = fair_clustering(
-     df
-     ,
+     df,
      feature_cols=['Lat_Scaled', 'Lon_Scaled'],
      protected_group_col='GROUP_ID',
      k_cluster=10,
