@@ -147,6 +147,9 @@ def solve_fair_lp(
     return result.x.reshape((dataset_len, nr_of_centers))
 
 
+
+
+
 def iterative_rounding(
     X: np.ndarray,
     centers: np.ndarray,
@@ -285,7 +288,33 @@ def iterative_rounding(
         # inequality: LP2 range constraints
         # Range [lo, hi] is expressed as two ≤ constraints:
         ineq_rows: list[np.ndarray] = []
-        ineq_rhs:  list[float]      = []
+        ineq_rhs:  list[float] = []
+
+        def _add_range(coeffs: dict[int, float], low: float, high: float) -> None:
+            """Add  lo ≤ Σ coeffs[v]*x_v ≤ hi  as two ≤ rows."""
+            high = max(high, low)
+            row_p = np.zeros(nr_vars_lp)
+            row_n = np.zeros(nr_vars_lp)
+            for value, coefficient in coeffs.items():
+                row_p[value] =  coefficient
+                row_n[value] = -coefficient
+            ineq_rows.append(row_p);  ineq_rhs.append(high)
+            ineq_rows.append(row_n);  ineq_rhs.append(-low)
+
+        # Per-center total weighted mass range
+        for col in range(k):
+            weighted_mass_col = weighted_mass[col]
+            low = max(0.0, np.floor(weighted_mass_col + 1e-9))
+            high = np.ceil(weighted_mass_col - 1e-9)
+            coeffs = {
+                quick_lookup_idx[(ii, j)]: weights[still_unassigned[ii]]
+                for ii in range(nr_unassigned) if (ii, j) in quick_lookup_idx
+            }
+            if coeffs:
+                _add_range(coeffs, low, high)
+
+    A_ub2 = np.vstack(ineq_rows) if ineq_rows else None
+    b_ub2 = np.array(ineq_rhs) if ineq_rows else None
 
 def fair_clustering(
     df: pd.DataFrame,
