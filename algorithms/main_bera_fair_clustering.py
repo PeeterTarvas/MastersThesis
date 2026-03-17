@@ -223,12 +223,69 @@ def iterative_rounding(
     labels : (n,) integer cluster assignment (index into centers)
     """
     dataset_len, k = x_lp.shape
-    max_group = int(group_codes.max()) + 1
+    max_group_code = int(group_codes.max()) + 1
     DELTA = 1  # groups partition points → Δ = 1
     SPARSITY_THRESHOLD = 2 * (DELTA + 1)  # = 4; when to drop fairness constraint
 
+    labels    = np.full(dataset_len, -1, dtype=np.int32)   # -1 = unassigned
+    unassigned = np.ones(dataset_len, dtype=bool)
 
+    weighted_mass = np.einsum('ij,i->j', x_lp, weights).astype(np.float64)
+    weighted_mass_unassigned = np.zeros((max_group_code, k), dtype=np.float64)
 
+    # Initially these equal the LP fractional assignments, scaled by weight.
+    for group_code in range(group_codes):
+        mask = (group_codes ==group_code)
+        weighted_mass_unassigned[group_code] = np.einsum('ij,i->j', x_lp[mask], weights[mask])
+
+    # Track which (center, group) fairness constraints are still enforced
+    fair_active = np.ones((max_group_code, k), dtype=bool)
+
+    # Cache: for each point, which centers still have a nonzero LP variable?
+    allowed = [set(np.where(x_lp[i] > 1e-9)[0]) for i in range(dataset_len)]
+
+    # -------------------------------------------------------------------------
+    # Iterative rounding loop
+    # -------------------------------------------------------------------------
+    iteration_amount = (dataset_len + k) * max_group_code + 10
+    for iter in range(iteration_amount):
+        still_unassigned = np.where(unassigned)[0]
+        if len(still_unassigned) == 0:
+            break
+        nr_unassigned = len(still_unassigned)
+
+        # ---- Enumerate active variables ------------------------------------
+        # A variable x_{ij} is active if:
+        #   - point i is unassigned, AND
+        #   - center j is in allowed[i]
+        # We enumerate them as (local_row, center) pairs with a flat index.
+        var_list = []
+        for enum, unassigned_point_idx in  enumerate(still_unassigned):
+            for j in sorted(allowed[unassigned_point_idx]):
+                var_list.append((enum, j))
+        nr_vars_lp = len(var_list)
+
+        if nr_vars_lp == 0: # No variables left — force greedy assignment
+            for i in still_unassigned:
+                labels[i] = int(np.argmin(D[i]))
+            break
+
+        quick_lookup_idx = {(unassigned_point_enum, j): enum for enum, (unassigned_point_enum, j) in enumerate(var_list)}
+        cost_vector_lp = np.array([
+            weights[still_unassigned[unassigned_point_enum]] * D[still_unassigned[unassigned_point_enum], j]
+            for unassigned_point_enum, j in var_list
+        ], dtype=np.float64)
+
+        # equality: each unassigned point fully assigned
+        a_equality = lil_matrix((nr_unassigned, nr_vars_lp), dtype=np.float64)
+        for enum, (unassigned_point_enum, j) in enumerate(var_list):
+            a_equality[unassigned_point_enum, enum] = 1.0
+        b_equality = np.ones(nr_unassigned, dtype=np.float64)
+
+        # inequality: LP2 range constraints
+        # Range [lo, hi] is expressed as two ≤ constraints:
+        ineq_rows: list[np.ndarray] = []
+        ineq_rhs:  list[float]      = []
 
 def fair_clustering(
     df: pd.DataFrame,
