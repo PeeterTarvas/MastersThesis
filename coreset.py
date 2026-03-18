@@ -58,17 +58,6 @@ def compute_fair_coreset(
     orig_lats = df_core['Latitude'].values[location_indices]
     orig_lons = df_core['Longitude'].values[location_indices]
 
-    #print("Mapping all points to their nearest spatial location...")
-    ## Vectorized L1 distance computation (Manhattan) to match your thesis metric
-    ## We process in chunks to prevent RAM overflow on 3M rows
-    #chunk_size = 100000
-    #labels = np.zeros(len(df_core), dtype=int)
-
-    #for i in range(0, len(df_core), chunk_size):
-    #    chunk = spatial_coords[i:i + chunk_size]
-    #    dists = np.sum(np.abs(chunk[:, np.newaxis, :] - centers[np.newaxis, :, :]), axis=2)
-    #    labels[i:i + chunk_size] = np.argmin(dists, axis=1)
-
     # --- Step 5: Assign every point to its nearest reference location (L1) -----
     # Memory note: naively broadcasting (n_points, n_locations, 2) at once
     # costs n_points × n_locations × 2 × 4 bytes.  With 100k points and 30k

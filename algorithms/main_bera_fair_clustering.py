@@ -147,12 +147,7 @@ def solve_fair_lp(
     return result.x.reshape((dataset_len, nr_of_centers))
 
 
-
-
-
 def iterative_rounding(
-    X: np.ndarray,
-    centers: np.ndarray,
     weights: np.ndarray,
     group_codes: np.ndarray,
     x_lp: np.ndarray,
@@ -403,6 +398,51 @@ def iterative_rounding(
 
         return labels
 
+def audit_fairness(
+    labels: np.ndarray,
+    group_codes: np.ndarray,
+    weights: np.ndarray,
+    group_labels: list,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    k: int,
+):
+    """Print per-cluster fairness vio
+    D = pairwise_l1(X, centers)
+    labels = _mcf_rounding(x_lp, group_codes, weights, D)
+
+    cost = float(np.dot(weights, D[np.arange(len(X)), labels]))
+    print(f"  Integral cost after rounding: {cost:,.2f}")lations."""
+    violations = 0
+    for j in range(k):
+        at_j = labels == j
+        total_j = weights[at_j].sum()
+        if total_j == 0:
+            continue
+        for h, lbl in enumerate(group_labels):
+            mass_h = weights[at_j & (group_codes == h)].sum()
+            frac = mass_h / total_j
+            if frac < lower_bounds[h] - 1e-4 or frac > upper_bounds[h] + 1e-4:
+                violations += 1
+
+    if violations == 0:
+        print("[FairClustering] ✓ All clusters satisfy fairness bounds.")
+    else:
+        print(f"[FairClustering] ⚠  {violations} (cluster, group) pairs violate bounds "
+              "(additive violations ≤ 1 are expected by Lemma 7).")
+
+def compute_gpof(
+    fair_cost: float,
+    unfair_cost: float,
+) -> float:
+    """
+    G-PoF = fair_cost / unfair_cost.
+    A value close to 1 means fairness is nearly free.
+    """
+    if unfair_cost == 0:
+        return float('inf')
+    return fair_cost / unfair_cost
+
 def fair_clustering(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -549,3 +589,52 @@ def fair_clustering(
     print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
     print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
           f"(1.0 = fairness is free)")
+
+
+if __name__ == "__main__":
+    import csv_loader
+    from coreset import compute_fair_coreset
+
+    # ---- With coreset ----
+    print("=== Coreset mode ===")
+    df_raw = csv_loader.load_csv_chunked(
+        "us_census_puma_data.csv",
+        csv_loader.LOAD_COLS,
+        csv_loader.LOAD_DTYPES,
+        chunk_size=10_000,
+        max_rows=10_000,
+    )
+    coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
+
+    centers_c, labels_c, cost_c = fair_clustering(
+        coreset_df,
+        feature_cols=['Lat_Scaled', 'Lon_Scaled'],
+        group_col='GROUP_ID',
+        k=10,
+        alpha=0.15,
+        weight_col='Weight',
+    )
+    print(f"[Coreset] Fair cost = {cost_c:,.2f}")
+
+    # ---- Without coreset (uniform weights) ----
+    print("\n=== Direct points mode (no coreset) ===")
+    # Prepare minimal columns needed  (we reuse the raw df here)
+    scaler = MinMaxScaler()
+    df_raw[['Lat_Scaled', 'Lon_Scaled']] = scaler.fit_transform(
+        df_raw[['Latitude', 'Longitude']]
+    )
+    df_raw['GROUP_ID'] = (
+        df_raw['RAC1P'].astype(str) + "_" + df_raw['SEX'].astype(str)
+    )
+
+    centers_r, labels_r, cost_r = fair_clustering(
+        df_raw,
+        feature_cols=['Lat_Scaled', 'Lon_Scaled'],
+        group_col='GROUP_ID',
+        k=10,
+        alpha=0.15,
+        weight_col=None
+    )
+    print(f"[Raw] Fair cost = {cost_r:,.2f}")
+
+    print(f"\nG-PoF (coreset): {compute_gpof(cost_c, cost_c):.4f}")  # placeholder
