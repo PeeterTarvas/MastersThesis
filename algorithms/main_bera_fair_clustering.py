@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
+from sklearn.preprocessing import MinMaxScaler
 
 import csv_loader
 from coreset import compute_fair_coreset, preprocess_dataset
