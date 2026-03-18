@@ -101,7 +101,7 @@ def solve_fair_lp(
     """
     dataset_len = len(X)
     nr_of_centers = len(centers)
-    nr_of_bounds = len(lower_bounds)
+    nr_of_groups = len(lower_bounds)
     n_vars = dataset_len * nr_of_centers
 
     distances_to_centers = pairwise_l1(X, centers).astype(np.float64)
@@ -111,18 +111,18 @@ def solve_fair_lp(
         a_equality_constraint[i, i * nr_of_centers : (i + 1) * nr_of_centers] = 1.0
     b_equality_constraint = np.ones(dataset_len, dtype=np.float64)
 
-    n_ineq = 2 * nr_of_bounds * nr_of_centers
+    n_ineq = 2 * nr_of_groups * nr_of_centers
     a_upper_bound = lil_matrix((n_ineq, n_vars), dtype=np.float64)
     b_bound = np.zeros(n_ineq)
 
     row = 0
     for center_index in range(nr_of_centers):
-        for bound_index in range(nr_of_bounds):
-            in_bound = (group_codes == bound_index)
+        for group_index in range(nr_of_groups):
+            in_bound = (group_codes == group_index)
             for row_indx in range(dataset_len):
                 col = row_indx * nr_of_centers + center_index
-                a_upper_bound[row, col] = lower_bounds[bound_index] - (1.0 if in_bound[row_indx] else 0.0)
-                a_upper_bound[row + 1, col] = -upper_bounds[bound_index] + (1.0 if in_bound[row_indx] else 0.0)
+                a_upper_bound[row, col] = lower_bounds[group_index] - (1.0 if in_bound[row_indx] else 0.0)
+                a_upper_bound[row + 1, col] = -upper_bounds[group_index] + (1.0 if in_bound[row_indx] else 0.0)
             row += 2
 
 
@@ -234,12 +234,12 @@ def iterative_rounding(
     unassigned = np.ones(dataset_len, dtype=bool)
 
     weighted_mass = np.einsum('ij,i->j', x_lp, weights).astype(np.float64)
-    weighted_mass_unassigned = np.zeros((max_group_code, k), dtype=np.float64)
+    group_weighted_mass = np.zeros((max_group_code, k), dtype=np.float64)
 
     # Initially these equal the LP fractional assignments, scaled by weight.
     for group_code in range(group_codes):
         mask = (group_codes ==group_code)
-        weighted_mass_unassigned[group_code] = np.einsum('ij,i->j', x_lp[mask], weights[mask])
+        group_weighted_mass[group_code] = np.einsum('ij,i->j', x_lp[mask], weights[mask])
 
     # Track which (center, group) fairness constraints are still enforced
     fair_active = np.ones((max_group_code, k), dtype=bool)
@@ -313,8 +313,95 @@ def iterative_rounding(
             if coeffs:
                 _add_range(coeffs, low, high)
 
-    A_ub2 = np.vstack(ineq_rows) if ineq_rows else None
-    b_ub2 = np.array(ineq_rhs) if ineq_rows else None
+        a_upperbound = np.vstack(ineq_rows) if ineq_rows else None
+        b_upperbound = np.array(ineq_rhs) if ineq_rows else None
+
+
+        result = linprog(
+            cost_vector_lp,
+            A_ub=a_upperbound,
+            b_ub=b_upperbound,
+            A_eq=a_equality.tocsc(),
+            b_eq=b_equality,
+            bounds=[(0.0, 1.0)] * nr_vars_lp,
+            method='highs',
+            options={'disp': False, 'presolve': True},
+        )
+
+        if result.status != 0:
+            warnings.warn(
+                f"[Rounding] LP2 infeasible at iter {iter} "
+                f"(status {result.status}). "
+                "Assigning remaining points greedily."
+            )
+            for i in still_unassigned:
+                labels[i] = int(np.argmin(D[i]))
+            break
+
+        _result = result.x
+
+        newly_assigned = False
+        # ---- Commit integral variables / prune zero variables --------------
+        for enum, (unassigned_point_enum, j) in enumerate(var_list):
+            i = int(still_unassigned[unassigned_point_enum])
+            val = _result[enum]
+
+            if val >= 1.0 - 1e-6:
+                # x_{ij} = 1 → assign point i to center j
+                labels[i] = j
+                unassigned[i] = False
+                weighted_mass[j] = max(0.0, weighted_mass[j] - weights[i])
+                group_weighted_mass[group_codes[i], j] = max(0.0, group_weighted_mass[group_codes[i], j] - weights[i])
+                allowed[i] = set()  # remove all variables for this point
+                newly_assigned = True
+
+            elif val <= 1e-6:
+                # x_{ij} ≈ 0 → prune this variable
+                allowed[i].discard(j)
+
+        # ---- If no variable became integral: force-commit the highest one --
+        # This is a numerical fallback; the Kiraly et al. matroid argument
+        # guarantees a vertex solution exists, but floating-point LP solvers
+        # sometimes return near-integral solutions just below the threshold.
+        if not newly_assigned:
+            best_v, best_val = 0, -1
+            for v, (unassigned_point_enum, j) in enumerate(var_list):
+                i = int(still_unassigned[unassigned_point_enum])
+                if unassigned[i] and _result[v] > best_val:
+                    best_val, best_v = _result[v], v
+                ii_b, j_b = var_list[best_v]
+                i_b = int(still_unassigned[ii_b])
+            labels[i_b] = j_b
+            unassigned[i_b] = False
+            weighted_mass[j_b] = max(0.0, weighted_mass[j_b] - weights[i_b])
+            group_weighted_mass[group_codes[i_b], j_b] = max(0.0, group_weighted_mass[group_codes[i_b], j_b] - weights[i_b])
+            allowed[i_b] = set()
+
+        # ---- Drop fairness constraints where sparsity condition is met -----
+        # Per the paper: drop (j, h) constraint once the number of fractional
+        # variables x_{ij} with i ∈ Col_h is ≤ 2(Δ+1) = 4.
+        remaining = np.where(unassigned)[0]
+        for group_code_indx in range(max_group_code):
+            for j in range(k):
+                if not fair_active[group_code_indx, j]:
+                    continue
+                frac_count = sum(
+                    1 for i in remaining
+                    if group_codes[i] == group_code_indx and j in allowed[i]
+                )
+                if frac_count <= SPARSITY_THRESHOLD:
+                    fair_active[group_code_indx, j] = False
+        # ---- Fallback for any remaining unassigned points ----------------------
+        still_left = np.where(labels == -1)[0]
+        if len(still_left) > 0:
+            warnings.warn(
+                f"[Rounding] {len(still_left)} point(s) unassigned after loop. "
+                "Assigning greedily."
+            )
+            for label_index in still_left:
+                labels[label_index] = int(np.argmin(D[label_index]))
+
+        return labels
 
 def fair_clustering(
     df: pd.DataFrame,
@@ -455,3 +542,10 @@ def fair_clustering(
     print(f"  → LP fractional cost:   {lp_cost:,.2f}")
     print(f"  → Integrality gap hint: "
           f"{lp_cost / unfair_cost:.3f}x unfair cost")
+    labels = iterative_rounding(
+        x, centers, weights, group_codes, x_lp, distsances_to_centers
+    )
+    fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), labels]))
+    print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
+    print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
+          f"(1.0 = fairness is free)")

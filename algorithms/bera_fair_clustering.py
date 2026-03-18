@@ -485,7 +485,7 @@ def iterative_rounding(
                 # x_{ij} ≈ 0 → prune this variable
                 allowed[i].discard(j)
 
-        # ---- If no variable became integral: force-commit the highest one --
+        # ---- If no variable became integral: force-commit thewww.auto24.ee/soidukid/4287469www.auto24.ee/soidukid/4287469 highest one --
         # This is a numerical fallback; the Kiraly et al. matroid argument
         # guarantees a vertex solution exists, but floating-point LP solvers
         # sometimes return near-integral solutions just below the threshold.
