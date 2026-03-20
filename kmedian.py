@@ -116,7 +116,7 @@ def _local_search_kmedian(
     k: int,
     _weights: np.ndarray,
     init_centers: np.ndarray,
-    max_iter: int = 100,
+    max_iter: int = 10,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single-swap local search for k-median (Arya et al. 2004 style).
@@ -141,7 +141,6 @@ def _local_search_kmedian(
     center_set = set(map(tuple, centers.tolist()))
 
     for iteration in range(max_iter):
-        print(2)
         best_gain = 0.0
         best_swap = None  # (old_center_idx_in_centers, new_point_idx_in_X)
 
@@ -149,7 +148,7 @@ def _local_search_kmedian(
             for xi in range(n):
                 candidate = X[xi]
                 if tuple(candidate.tolist()) in center_set:
-                    continue  # already a center
+                    continue
 
                 # Build trial centers with the swap
                 trial_centers = centers.copy()
@@ -161,13 +160,87 @@ def _local_search_kmedian(
                     best_swap = (ci, xi)
 
         if best_swap is None:
-            break  # local optimum
+            break
 
         ci, xi = best_swap
         center_set.discard(tuple(centers[ci].tolist()))
         centers[ci] = X[xi].copy()
         center_set.add(tuple(centers[ci].tolist()))
         labels, cost = assignment_cost(X, centers, _weights)
+
+    return centers, labels, cost
+
+
+def local_search_kmedian(
+        X: np.ndarray,
+        k: int,
+        _weights: np.ndarray,
+        init_centers: np.ndarray,
+        max_iter: int = 10,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """
+    Optimized single-swap local search for k-median (Arya et al. 2004 style).
+    Avoids recomputing the full distance matrix on every swap trial.
+    """
+    n, d = X.shape
+    centers = init_centers.copy()
+
+    # Pre-calculate the initial distance matrix (n x k)
+    D = pairwise_l1(X, centers)
+    labels = np.argmin(D, axis=1)
+    min_dists = D[np.arange(n), labels]
+    cost = float(np.dot(_weights, min_dists))
+
+    # Fast lookup to prevent swapping a center with itself
+    center_set = set(map(tuple, centers.tolist()))
+
+    for iteration in range(max_iter):
+        best_gain = 0.0
+        best_swap = None
+
+        for ci in range(k):
+            # Calculate the distance to the closest center IF center `ci` is removed
+            if k == 1:
+                min_dists_without_ci = np.full(n, np.inf)
+            else:
+                D_other = np.delete(D, ci, axis=1)
+                min_dists_without_ci = D_other.min(axis=1)
+
+            for xi in range(n):
+                candidate = X[xi]
+                if tuple(candidate.tolist()) in center_set:
+                    continue
+
+                # Instead of computing the full (n x k) matrix, just compute
+                # the distance from all points to the *new* candidate center
+                dist_to_candidate = np.sum(np.abs(X - candidate), axis=1)
+
+                # The new shortest distance for each point is the minimum of
+                # the distance to the new candidate OR the remaining centers
+                new_min_dists = np.minimum(min_dists_without_ci, dist_to_candidate)
+
+                trial_cost = float(np.dot(_weights, new_min_dists))
+                gain = cost - trial_cost
+
+                if gain > best_gain:
+                    best_gain = gain
+                    best_swap = (ci, xi)
+
+        if best_swap is None:
+            break  # Local optimum reached
+
+        ci, xi = best_swap
+
+        # Update the centers and our tracking sets
+        center_set.discard(tuple(centers[ci].tolist()))
+        centers[ci] = X[xi].copy()
+        center_set.add(tuple(centers[ci].tolist()))
+
+        # Update our running distance matrix and costs
+        D[:, ci] = np.sum(np.abs(X - centers[ci]), axis=1)
+        labels = np.argmin(D, axis=1)
+        min_dists = D[np.arange(n), labels]
+        cost = float(np.dot(_weights, min_dists))
 
     return centers, labels, cost
 
@@ -181,7 +254,7 @@ def kmedian(
     k: int,
     _weights: Optional[np.ndarray] = None,
     n_trials: int = 5,
-    max_iter: int = 100,
+    max_iter: int = 10,
     random_seed: Optional[int] = None,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
@@ -222,9 +295,8 @@ def kmedian(
     best_centers, best_labels, best_cost = None, None, np.inf
 
     for trial in range(n_trials):
-        print(1)
         init_centers = kmedian_plus_plus_seed(X, k, rng, _weights)
-        centers, labels, cost = _local_search_kmedian(X, k, _weights, init_centers, max_iter)
+        centers, labels, cost = local_search_kmedian(X, k, _weights, init_centers, max_iter)
         if cost < best_cost:
             best_centers = centers
             best_labels = labels

@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional
+from typing import Optional, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from numpy import ndarray
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
 from sklearn.preprocessing import MinMaxScaler
-
+import time
+from scipy.sparse import coo_matrix
 import csv_loader
 from coreset import compute_fair_coreset, preprocess_dataset
 from kmedian import kmedian, pairwise_l1
+import csv_loader
+from coreset import compute_fair_coreset
+
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     """
@@ -233,7 +238,7 @@ def iterative_rounding(
     group_weighted_mass = np.zeros((max_group_code, k), dtype=np.float64)
 
     # Initially these equal the LP fractional assignments, scaled by weight.
-    for group_code in range(group_codes):
+    for group_code in group_codes:
         mask = (group_codes ==group_code)
         group_weighted_mass[group_code] = np.einsum('ij,i->j', x_lp[mask], weights[mask])
 
@@ -279,6 +284,12 @@ def iterative_rounding(
         a_equality = lil_matrix((nr_unassigned, nr_vars_lp), dtype=np.float64)
         for enum, (unassigned_point_enum, j) in enumerate(var_list):
             a_equality[unassigned_point_enum, enum] = 1.0
+
+        #rows = np.repeat(np.arange(dataset_len), k)
+        #cols = np.arange(dataset_len * k)
+        #data = np.ones(dataset_len * k)
+
+        #a_equality = coo_matrix((data, (rows, cols)), shape=(dataset_len, dataset_len * k))
         b_equality = np.ones(nr_unassigned, dtype=np.float64)
 
         # inequality: LP2 range constraints
@@ -397,7 +408,7 @@ def iterative_rounding(
             for label_index in still_left:
                 labels[label_index] = int(np.argmin(D[label_index]))
 
-        return labels
+    return labels
 
 def audit_fairness(
     labels: np.ndarray,
@@ -456,7 +467,7 @@ def fair_clustering(
     kmedian_trials: int = 3,
     kmedian_max_iter: int = 50,
     random_seed: int = 42
-) -> tuple[np.ndarray, np.ndarray, float]:
+) -> tuple[ndarray, ndarray, float, dict[Any, Any]] | None:
     """
     Fair k-Median Clustering via the algorithm of Bera et al. (NeurIPS 2019).
 
@@ -518,6 +529,9 @@ def fair_clustering(
     labels  : (n,)   integer cluster assignment per row of df
     cost    : total weighted L1 assignment cost
     """
+    timing = {}
+
+    t_start_prep = time.perf_counter()
     x = df[feature_cols].to_numpy(dtype=np.float64)
     if weight_col and weight_col in df.columns:
         weights = df[weight_col].to_numpy(dtype=np.float64)
@@ -551,8 +565,10 @@ def fair_clustering(
             f"Σ upper_bounds = {upper_bounds.sum():.3f} < 1. "
             "The LP will be infeasible.  Increase alpha or relax bounds."
         )
+    timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
     # ---- Vanilla k-median ------------------------------------------
+    t_start_kmedian = time.perf_counter()
     print(f"\nVanilla k-median (trials={kmedian_trials}, "
           f"max_iter={kmedian_max_iter}) ...")
     centers, unfair_labels, unfair_cost = kmedian(
@@ -562,12 +578,15 @@ def fair_clustering(
         max_iter=kmedian_max_iter,
         random_seed=random_seed,
     )
+    timing['Vanilla K-Median'] = time.perf_counter() - t_start_kmedian
     print(f"  → Unfair k-median cost: {unfair_cost:,.2f}")
 
     # ----  Fair LP relaxation ----------------------------------------
+    t_start_lp = time.perf_counter()
     print(f"\nSolving Fair LP relaxation  "
           f"(n_vars = {len(x) * k_centers:,}, n_constraints ≈ {len(x) + 2*nr_of_groups*k_centers:,}) ...")
     x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bounds, upper_bounds)
+    timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
     if x_lp is None:
         # LP failed — fall back to unfair assignment
         warnings.warn(
@@ -575,6 +594,7 @@ def fair_clustering(
         )
         return None
 
+    t_start_rounding = time.perf_counter()
     distsances_to_centers = pairwise_l1(x, centers)
     lp_cost = float(np.dot(
         weights,
@@ -584,58 +604,81 @@ def fair_clustering(
     print(f"  → Integrality gap hint: "
           f"{lp_cost / unfair_cost:.3f}x unfair cost")
     labels = iterative_rounding(
-        x, centers, weights, group_codes, x_lp, distsances_to_centers
+         weights, group_codes, x_lp, distsances_to_centers
     )
+    timing['Iterative Rounding'] = time.perf_counter() - t_start_rounding
+
+    t_start_cost = time.perf_counter()
     fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), labels]))
     print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
+
     print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
           f"(1.0 = fairness is free)")
+    timing['Cost Calculation'] = time.perf_counter() - t_start_cost
+    return centers, labels, fair_cost, timing
 
+
+def plot_execution_times(timing_dict: dict, title: str = "Execution Time by Step"):
+    """Visualizes the time taken for each step in the fair clustering pipeline."""
+    steps = list(timing_dict.keys())
+    times = list(timing_dict.values())
+
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(steps, times, color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2'])
+    plt.ylabel('Time (seconds)')
+    plt.title(title)
+    plt.xticks(rotation=15)
+
+    for bar, t in zip(bars, times):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05 * max(times),
+                 f'{t:.2f}s', ha='center', va='bottom', fontsize=10)
+
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
-    import csv_loader
-    from coreset import compute_fair_coreset
-
     # ---- With coreset ----
-    print("=== Coreset mode ===")
-    df_raw = csv_loader.load_csv_chunked(
-        "us_census_puma_data.csv",
+    df = csv_loader.load_csv_chunked(
+        "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
         chunk_size=10_000,
         max_rows=10_000,
     )
-    coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
+    ##coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
 
-    centers_c, labels_c, cost_c = fair_clustering(
-        coreset_df,
+    ##centers_c, labels_c, cost_c = fair_clustering(
+    ##    coreset_df,
+    ##    feature_cols=['Lat_Scaled', 'Lon_Scaled'],
+    ##    group_col='GROUP_ID',
+    ##    k=10,
+    ##    alpha=0.15,
+    ##    weight_col='Weight',
+    ##)
+    ##print(f"[Coreset] Fair cost = {cost_c:,.2f}")
+
+    preprocessed_df = preprocess_dataset(df)
+
+    ### ---- Without coreset (uniform weights) ----
+    ##print("\n=== Direct points mode (no coreset) ===")
+    ### Prepare minimal columns needed  (we reuse the raw df here)
+    ##scaler = MinMaxScaler()
+    ##df[['Lat_Scaled', 'Lon_Scaled']] = scaler.fit_transform(
+    ##    df[['Latitude', 'Longitude']]
+    ##)
+    ##df['GROUP_ID'] = (
+    ##    df['RAC1P'].astype(str) + "_" + df['SEX'].astype(str)
+    ##)
+
+    centers_r, labels_r, cost_r, timing_r = fair_clustering(
+        preprocessed_df,
         feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-        group_col='GROUP_ID',
-        k=10,
-        alpha=0.15,
-        weight_col='Weight',
-    )
-    print(f"[Coreset] Fair cost = {cost_c:,.2f}")
-
-    # ---- Without coreset (uniform weights) ----
-    print("\n=== Direct points mode (no coreset) ===")
-    # Prepare minimal columns needed  (we reuse the raw df here)
-    scaler = MinMaxScaler()
-    df_raw[['Lat_Scaled', 'Lon_Scaled']] = scaler.fit_transform(
-        df_raw[['Latitude', 'Longitude']]
-    )
-    df_raw['GROUP_ID'] = (
-        df_raw['RAC1P'].astype(str) + "_" + df_raw['SEX'].astype(str)
-    )
-
-    centers_r, labels_r, cost_r = fair_clustering(
-        df_raw,
-        feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-        group_col='GROUP_ID',
-        k=10,
+        protected_group_col='GROUP_ID',
+        k_centers=10,
         alpha=0.15,
         weight_col=None
     )
     print(f"[Raw] Fair cost = {cost_r:,.2f}")
 
-    print(f"\nG-PoF (coreset): {compute_gpof(cost_c, cost_c):.4f}")  # placeholder
+    print(f"\nG-PoF (coreset): {compute_gpof(cost_r, cost_r):.4f}")
+    plot_execution_times(timing_r, "Fair Clustering Run Time (n=10,000)")
