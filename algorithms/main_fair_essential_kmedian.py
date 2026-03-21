@@ -1,7 +1,8 @@
 import warnings
-from typing import Optional
+from typing import Optional, Any
 
 import networkx as nx
+from numpy import ndarray
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
 
@@ -10,6 +11,7 @@ from coreset import compute_fair_coreset, preprocess_dataset
 
 import numpy as np
 import pandas as pd
+import time
 
 from kmedian import kmedian, pairwise_l1
 
@@ -288,6 +290,24 @@ def visualize_fair_clusters(df, labels, centers, feature_cols, group_col):
     plt.tight_layout()
     plt.show()
 
+def plot_execution_times(timing_dict: dict, title: str = "Execution Time by Step"):
+    """Visualizes the time taken for each step in the fair clustering pipeline."""
+    steps = list(timing_dict.keys())
+    times = list(timing_dict.values())
+
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(steps, times, color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2', '#4C72B0'])
+    plt.ylabel('Time (seconds)')
+    plt.title(title)
+    plt.xticks(rotation=15)
+
+    for bar, t in zip(bars, times):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05 * max(times),
+                 f'{t:.2f}s', ha='center', va='bottom', fontsize=10)
+
+    plt.tight_layout()
+    plt.show()
+
 def fair_clustering(
         df: pd.DataFrame,
         feature_cols: list,
@@ -300,7 +320,7 @@ def fair_clustering(
         kmedian_trials: int = 3,
         kmedian_max_iter: int = 50,
         random_seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray, float]:
+) -> tuple[ndarray, Any, float] | tuple[ndarray, ndarray, float, dict[Any, Any]]:
     """
     Algorithm: Essentially Fair k-Median Clustering.
 
@@ -323,6 +343,11 @@ def fair_clustering(
     labels  : (n,) integer cluster assignment per row of df
     cost    : total weighted L1 assignment cost
     """
+
+    timing = {}
+
+    t_start = time.perf_counter()
+    t_start_prep = time.perf_counter()
 
     x = df[feature_cols].to_numpy(dtype=np.float64)
 
@@ -354,7 +379,9 @@ def fair_clustering(
                 f"Group '{group_labels[h]}' proportion {f[h]:.3f} is outside "
                 f"[{upper_bound[h]:.3f}, {lower_bound[h]:.3f}] — LP will be infeasible. "
                 "Increase alpha or adjust bounds.")
+    timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
+    t_start_kmedian = time.perf_counter()
     print("k-median for centering")
     centers, _, unfair_cost = kmedian(
         x, k_cluster, _weights=weights,
@@ -362,9 +389,13 @@ def fair_clustering(
         max_iter=kmedian_max_iter,
         random_seed=random_seed
     )
+    timing['Vanilla K-Median'] = time.perf_counter() - t_start_kmedian
+
+    t_start_lp = time.perf_counter()
     print(f"Unfair k-median cost: {unfair_cost:,.2f}")
     print("Solving Fair LP...")
     x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bound, upper_bound)
+    timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
 
     if x_lp is None:
         warnings.warn("LP failed — returning unfair k-median assignment.")
@@ -376,14 +407,20 @@ def fair_clustering(
     print(f"LP fractional cost: {float(np.dot(weights, (pairwise_l1(x, centers) * x_lp).sum(axis=1))):,.2f}")
     # --- Step 3: MCF rounding ---
     print("Min-cost flow rounding...")
+    t_start_rounding = time.perf_counter()
     distances_to_centers = pairwise_l1(x, centers)
     labels = min_cost_flow_rounding(x_lp, group_codes, weights, distances_to_centers)
+    timing['MCF Rounding'] = time.perf_counter() - t_start_rounding
+
+    t_start_cost = time.perf_counter()
     cost = float(np.dot(weights, distances_to_centers[np.arange(len(x)), labels]))
     evaluate_fairness(labels, group_codes, weights, group_labels, lower_bound, upper_bound, k_cluster)
+    timing['Cost Calculation'] = time.perf_counter() - t_start_cost
 
     visualize_fair_clusters(df, labels, centers, feature_cols, protected_group_col)
+    timing['Total Time'] = time.perf_counter() - t_start
 
-    return centers, labels, cost
+    return centers, labels, cost, timing
 
 
 def compute_gpof(
@@ -408,7 +445,7 @@ if __name__ == "__main__":
     )
  ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
  df = preprocess_dataset(df)
- centers_c, labels_c, cost_c = fair_clustering(
+ centers_c, labels_c, cost_c, timing_c = fair_clustering(
      df,
      feature_cols=['Lat_Scaled', 'Lon_Scaled'],
      protected_group_col='GROUP_ID',
@@ -416,3 +453,5 @@ if __name__ == "__main__":
      alpha=0.2,
      weight_col='Weight',
  )
+
+ plot_execution_times(timing_c, "Fair Clustering Run Time (n=10,000)")

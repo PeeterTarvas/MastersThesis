@@ -15,10 +15,10 @@ def preprocess_dataset(df: pd.DataFrame):
 
     print("Generating unique 'groups' for intersectional fairness...")
     df_core['GROUP_ID'] = (
-            df_core['RAC1P'].astype(str) + "_" +
+            ##df_core['RAC1P'].astype(str) + "_"# +
             ##df_core['SEX'].astype(str) + "_" +
-            ##df_core['AGE_BIN'].astype(str) + "_" +
-            df_core['INC_BIN'].astype(str)
+            df_core['AGE_BIN'].astype(str) + "_"# +
+            ##df_core['INC_BIN'].astype(str)
     )
 
     print("3. Extracting and scaling spatial coordinates...")

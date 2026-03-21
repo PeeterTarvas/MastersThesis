@@ -308,17 +308,22 @@ def iterative_rounding(
             ineq_rows.append(row_p);  ineq_rhs.append(high)
             ineq_rows.append(row_n);  ineq_rhs.append(-low)
 
-        # Per-center total weighted mass range
-        for col in range(k):
-            weighted_mass_col = weighted_mass[col]
-            low = max(0.0, np.floor(weighted_mass_col + 1e-9))
-            high = np.ceil(weighted_mass_col - 1e-9)
-            coeffs = {
-                quick_lookup_idx[(ii, j)]: weights[still_unassigned[ii]]
-                for ii in range(nr_unassigned) if (ii, j) in quick_lookup_idx
-            }
-            if coeffs:
-                _add_range(coeffs, low, high)
+
+        # Per-group, per-center weighted mass range
+        for h in range(max_group_code):
+            for col in range(k):
+                if not fair_active[h, col]:
+                    continue
+                group_weighted_mass_col = group_weighted_mass[h, col]
+                low = max(0.0, np.floor(group_weighted_mass_col + 1e-9))
+                high = np.ceil(group_weighted_mass_col - 1e-9)
+                coeffs = {
+                    quick_lookup_idx[(nr_unassigned_idx, col)]: weights[still_unassigned[nr_unassigned_idx]]
+                    for nr_unassigned_idx in range(nr_unassigned) if group_codes[still_unassigned[nr_unassigned_idx]] == h
+                                                                     and (nr_unassigned_idx, col) in quick_lookup_idx
+                }
+                if coeffs:
+                    _add_range(coeffs, low, high)
 
         a_upperbound = np.vstack(ineq_rows) if ineq_rows else None
         b_upperbound = np.array(ineq_rhs) if ineq_rows else None
@@ -376,8 +381,8 @@ def iterative_rounding(
                 i = int(still_unassigned[unassigned_point_enum])
                 if unassigned[i] and _result[v] > best_val:
                     best_val, best_v = _result[v], v
-                ii_b, j_b = var_list[best_v]
-                i_b = int(still_unassigned[ii_b])
+            ii_b, j_b = var_list[best_v]
+            i_b = int(still_unassigned[ii_b])
             labels[i_b] = j_b
             unassigned[i_b] = False
             weighted_mass[j_b] = max(0.0, weighted_mass[j_b] - weights[i_b])
@@ -530,6 +535,7 @@ def fair_clustering(
     cost    : total weighted L1 assignment cost
     """
     timing = {}
+    t_start = time.perf_counter()
 
     t_start_prep = time.perf_counter()
     x = df[feature_cols].to_numpy(dtype=np.float64)
@@ -612,9 +618,15 @@ def fair_clustering(
     fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), labels]))
     print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
 
+    audit_fairness(labels, group_codes, weights, group_names,
+                   lower_bounds, upper_bounds, k_centers)
+
     print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
           f"(1.0 = fairness is free)")
     timing['Cost Calculation'] = time.perf_counter() - t_start_cost
+
+    timing['Total Time'] = time.perf_counter() - t_start
+
     return centers, labels, fair_cost, timing
 
 
@@ -624,7 +636,7 @@ def plot_execution_times(timing_dict: dict, title: str = "Execution Time by Step
     times = list(timing_dict.values())
 
     plt.figure(figsize=(10, 6))
-    bars = plt.bar(steps, times, color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2'])
+    bars = plt.bar(steps, times, color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2', '#4C72B0'])
     plt.ylabel('Time (seconds)')
     plt.title(title)
     plt.xticks(rotation=15)
@@ -675,7 +687,7 @@ if __name__ == "__main__":
         feature_cols=['Lat_Scaled', 'Lon_Scaled'],
         protected_group_col='GROUP_ID',
         k_centers=10,
-        alpha=0.15,
+        alpha=0.02,
         weight_col=None
     )
     print(f"[Raw] Fair cost = {cost_r:,.2f}")
