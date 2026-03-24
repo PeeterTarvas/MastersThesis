@@ -12,6 +12,8 @@ from coreset import compute_fair_coreset, preprocess_dataset
 import numpy as np
 import pandas as pd
 import time
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from kmedian import kmedian, pairwise_l1
 
@@ -257,8 +259,6 @@ def evaluate_fairness(
               "(additive violations ≤ 1 are expected by Lemma 7).")
 
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 def visualize_fair_clusters(df, labels, centers, feature_cols, group_col):
@@ -422,18 +422,6 @@ def fair_clustering(
 
     return centers, labels, cost, timing
 
-
-def compute_gpof(
-    fair_cost: float,
-    unfair_cost: float,
-) -> float:
-    """
-    G-PoF = fair_cost / unfair_cost.
-    A value close to 1 means fairness is nearly free.
-    """
-    if unfair_cost == 0:
-        return float('inf')
-    return fair_cost / unfair_cost
 
 if __name__ == "__main__":
  df = csv_loader.load_csv_chunked(
