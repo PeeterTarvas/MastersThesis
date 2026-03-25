@@ -127,9 +127,7 @@ def solve_fair_lp(
 
             a_upper_bound[row, cols] = lower_bounds[group_index] - in_bound
             a_upper_bound[row + 1, cols] = in_bound - upper_bounds[group_index]
-
             row += 2
-
 
     result = linprog(
         cost_to_center,
@@ -159,59 +157,6 @@ def iterative_rounding(
     D: np.ndarray,
 ) -> np.ndarray:
     """
-    Iterative LP rounding to turn the fractional Fair-LP solution into
-    an integral assignment, following Algorithm 2 of Bera et al. 2019.
-
-    The algorithm achieves (4Δ+3)-additive violation of fairness constraints
-    where Δ = max number of groups a single point can belong to.
-    Since our groups partition the points (each point in exactly one group),
-    Δ = 1 and the additive violation is at most 7.
-
-    Key idea  (matching the paper's proof of Theorem 7)
-    ---------------------------------------------------
-    The initial LP solution x* may be fractional (a point split across centers).
-    We need to round it to an integral assignment while preserving fairness.
-
-    Step A — Compute "target mass" from the LP solution:
-        T_f[j]    = Σ_i   w_i · x*_{ij}   (weighted total  at center j)
-        T_fh[h,j] = Σ_{i∈Col_h} w_i · x*_{ij}  (weighted group-h mass at center j)
-
-    Step B — Build LP2 with TIGHTER bounds that force integrality:
-        ⌊T_f[j]⌋    ≤  Σ_i   w_i · x_{ij}         ≤  ⌈T_f[j]⌉      ∀ j
-        ⌊T_fh[h,j]⌋ ≤  Σ_{i∈Col_h} w_i · x_{ij}   ≤  ⌈T_fh[h,j]⌉  ∀ j, h
-
-    Because T_f[j] is the *sum* of the original LP's assignments to center j,
-    and it may be non-integer, tightening to [⌊T_f⌋, ⌈T_f⌉] constrains the
-    integral assignment to be very close to the LP's fractional one.
-
-    Step C — Iterative loop:
-        1. Solve LP2 on the remaining (unassigned) points.
-        2. Any x_{ij} = 1 → commit: assign point i to center j, remove from LP.
-        3. Any x_{ij} = 0 → prune: remove that variable (point won't go there).
-        4. Adjust T_f[j] and T_fh[h,j] by subtracting committed weight.
-        5. Drop (j,h) constraint once ≤ 2(Δ+1) fractional vars remain for it.
-           This is the sparsity/degree argument from Kiraly et al. [49] in the paper.
-        6. Repeat until all points assigned.
-
-    Why does this terminate?  Each iteration either:
-      - Commits at least one point (LP2 has an integral vertex due to matroid
-        structure when sparsity threshold is reached), OR
-      - Drops a fairness constraint (reducing LP2's size).
-    Both events are finite, so the loop terminates in O(n · H · k) steps.
-
-    Why does the fairness violation stay small?  When we drop a (j,h) constraint
-    because ≤ 2(Δ+1) fractional variables remain, assigning all of them to center j
-    (worst case) introduces at most 2(Δ+1) additive error per group per cluster.
-    Combined with the floor/ceil rounding error of ±1, this gives the (4Δ+3) bound.
-
-    Weighted points
-    ---------------
-    With coreset weights w_i > 1, the fairness bounds T_fh are in terms of
-    weighted mass rather than point counts.  The LP2 constraints are written
-    in terms of weighted sums Σ w_i x_{ij}, and when a point is committed,
-    we subtract w_i from T_f[j] and T_fh[group, j].  This keeps the invariant
-    that T_f[j] is exactly the remaining weighted mass still to be assigned.
-
     Parameters
     ----------
     X          : (n, d)  point coordinates
@@ -227,10 +172,10 @@ def iterative_rounding(
     """
     dataset_len, nr_of_centers = x_lp.shape
     max_group_code = int(group_codes.max()) + 1
-    DELTA = 1  # groups partition points → Δ = 1
-    SPARSITY_THRESHOLD = 2 * (DELTA + 1)  # = 4; when to drop fairness constraint
+    DELTA = 1
+    SPARSITY_THRESHOLD = 2 * (DELTA + 1)
 
-    labels = np.full(dataset_len, -1, dtype=np.int32)   # -1 = unassigned
+    labels = np.full(dataset_len, -1, dtype=np.int32)
     unassigned = np.ones(dataset_len, dtype=bool)
 
     weighted_mass = np.einsum('ij,i->j', x_lp, weights).astype(np.float64)
@@ -239,11 +184,9 @@ def iterative_rounding(
         for group_code in range(max_group_code)
     ])
 
-    # Track which (center, group) fairness constraints are still enforced
     fair_active = np.ones((max_group_code, nr_of_centers), dtype=bool)
     # Cache: for each point, which centers still have a nonzero LP variable?
     allowed = [set(np.where(x_lp[i] > 1e-9)[0]) for i in range(dataset_len)]
-
 
     iteration_amount = (dataset_len + nr_of_centers) * max_group_code + 10
     for iter in range(iteration_amount):
@@ -271,7 +214,6 @@ def iterative_rounding(
             for unassigned_point_enum, j in var_list
         ], dtype=np.float64)
 
-        # equality: each unassigned point fully assigned
         a_equality = lil_matrix((nr_unassigned, nr_vars_lp), dtype=np.float64)
         for enum, (unassigned_point_enum, j) in enumerate(var_list):
             a_equality[unassigned_point_enum, enum] = 1.0
@@ -429,43 +371,6 @@ def fair_clustering(
          ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
              Any, dtype[Any]] | Any, ndarray, list, ndarray, ndarray] | None:
     """
-    Fair k-Median Clustering via the algorithm of Bera et al. (NeurIPS 2019).
-
-    Supports TWO usage modes
-    ------------------------
-
-    Mode A — Coreset (weighted):
-        Pass a DataFrame produced by compute_fair_coreset().
-        Each row is a *representative point* carrying a Weight that encodes
-        how many original points it represents.  The LP and rounding work
-        natively with these weights, so the algorithm is both correct and fast.
-
-        Example:
-            coreset_df = compute_fair_coreset(raw_df, n_locations=1000)
-            centers, labels, cost = fair_clustering(
-                coreset_df,
-                feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-                protected_group_col='GROUP_ID',
-                k=10,
-                alpha=0.1,
-                weight_col='Weight',     # ← coreset weights
-            )
-
-    Mode B — Raw data (unweighted):
-        Pass a DataFrame of individual data points.
-        weight_col=None makes every point contribute equally (weight = 1).
-        This is correct but slow for large datasets (n > ~5000).
-
-        Example:
-            centers, labels, cost = fair_clustering(
-                processed_df,
-                feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-                protected_group_col='GROUP_ID',
-                k=10,
-                alpha=0.1,
-                weight_col=None,         # ← uniform weights
-            )
-
     Parameters
     ----------
     df                  : DataFrame with feature and group columns.
@@ -515,7 +420,6 @@ def fair_clustering(
             print(f"  Group '{name}': freq={f_h:.3f}  "
                   f"bounds=[{lower_bounds[h]:.3f}, {upper_bounds[h]:.3f}]")
 
-    # Necessary condition: Σ_h lower_bounds[h] ≤ 1 ≤ Σ_h upper_bounds[h]
     if lower_bounds.sum() > 1.0 + 1e-6:
         warnings.warn(
             f"Σ lower_bounds = {lower_bounds.sum():.3f} > 1. "
@@ -528,7 +432,6 @@ def fair_clustering(
         )
     timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
-    # ---- Vanilla k-median ------------------------------------------
     t_start_kmedian = time.perf_counter()
     print(f"\nVanilla k-median (trials={kmedian_trials}, "
           f"max_iter={kmedian_max_iter}) ...")
@@ -542,14 +445,12 @@ def fair_clustering(
     timing['Vanilla K-Median'] = time.perf_counter() - t_start_kmedian
     print(f"  → Unfair k-median cost: {unfair_cost:,.2f}")
 
-    # ----  Fair LP relaxation ----------------------------------------
     t_start_lp = time.perf_counter()
     print(f"\nSolving Fair LP relaxation  "
           f"(n_vars = {len(x) * k_centers:,}, n_constraints ≈ {len(x) + 2*nr_of_groups*k_centers:,}) ...")
     x_lp = solve_fair_lp(x, unfair_centers, weights, group_codes, lower_bounds, upper_bounds)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
     if x_lp is None:
-        # LP failed — fall back to unfair assignment
         warnings.warn(
             "[FairClustering] LP infeasible — returning unfair k-median result."
         )

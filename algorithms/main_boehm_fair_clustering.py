@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-import warnings
 from typing import Optional, Any
 
-import matplotlib.pyplot as plt
-import numpy as np
+
 import pandas as pd
 from numpy import ndarray
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 import time
-import csv_loader
-from coreset import compute_fair_coreset, preprocess_dataset
-from kmedian import kmedian, pairwise_l1, assignment_cost
-import csv_loader
-from coreset import preprocess_dataset
+from kmedian import kmedian, pairwise_l1
 
 import numpy as np
 import csv_loader

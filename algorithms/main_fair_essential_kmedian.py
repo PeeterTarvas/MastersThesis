@@ -7,14 +7,11 @@ from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix, kron, eye
 import csv_loader
-from algorithms.main_boehm_fair_clustering import evaluate_fairness
 from coreset import compute_fair_coreset, preprocess_dataset
 
 import numpy as np
 import pandas as pd
 import time
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from evaluate import make_result, evaluate, audit_fairness_proportional, plot_execution_times, plot_spatial_clusters, \
     plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown
@@ -211,9 +208,6 @@ def min_cost_flow_rounding(
         best_flow = 0
         for i in range(k):
             ch_node = f"ch_{h}_{i}"
-            ##if flow_dict.get(point_node, {}).get(ch_node, 0) > 0:
-            ##    assigned_center = i
-            ##    break
             f_val = flow_dict.get(point_node, {}).get(ch_node, 0)
             if f_val > best_flow:
                 best_flow, assigned_center = f_val, i
