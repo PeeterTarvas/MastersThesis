@@ -2,33 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
-
-def preprocess_dataset(df: pd.DataFrame):
-    df_core = df.copy()
-    df_core['AGE_BIN'] = pd.cut(df_core['AGEP'], bins=[0, 18, 35, 55, 120],
-                                labels=['Youth', 'YoungAdult', 'Adult', 'Senior'])
-
-    df_core['INC_BIN'] = pd.cut(df_core['PINCP'], bins=[-np.inf, 35000, 75000, np.inf], labels=['Low', 'Med', 'High'])
-
-    df_core['AGE_BIN'] = df_core['AGE_BIN'].cat.add_categories('Unknown').fillna('Unknown')
-    df_core['INC_BIN'] = df_core['INC_BIN'].cat.add_categories('Unknown').fillna('Unknown')
-
-    print("Generating unique 'groups' for intersectional fairness...")
-    df_core['GROUP_ID'] = (
-            ##df_core['RAC1P'].astype(str) + "_"# +
-            ##df_core['SEX'].astype(str) + "_" +
-            df_core['AGE_BIN'].astype(str) + "_"# +
-            ##df_core['INC_BIN'].astype(str)
-    )
-
-    print("3. Extracting and scaling spatial coordinates...")
-    scaler = MinMaxScaler()
-    spatial_coords = scaler.fit_transform(df_core[['Latitude', 'Longitude']])
-
-    df_core['Lat_Scaled'] = spatial_coords[:, 0]
-    df_core['Lon_Scaled'] = spatial_coords[:, 1]
-    return df_core
-
 def compute_fair_coreset(
         df: pd.DataFrame,
         n_locations: int = 1000,

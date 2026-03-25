@@ -13,7 +13,6 @@ from kmedian import kmedian, pairwise_l1
 
 import numpy as np
 import csv_loader
-from coreset import preprocess_dataset
 from evaluate import make_result, evaluate, audit_fairness_exact_balance, plot_pof_comparison, plot_group_pof, \
     plot_cost_breakdown
 from evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_pof
@@ -204,7 +203,7 @@ if __name__ == "__main__":
         max_rows=10_000,
     )
 
-    df_processed = preprocess_dataset(df)
+    df_processed = csv_loader.preprocess_dataset(df)
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"

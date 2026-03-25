@@ -7,7 +7,6 @@ from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix, kron, eye
 import csv_loader
-from coreset import compute_fair_coreset, preprocess_dataset
 
 import numpy as np
 import pandas as pd
@@ -307,7 +306,7 @@ if __name__ == "__main__":
         max_rows=10_000,
     )
     ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
-    df = preprocess_dataset(df)
+    df = csv_loader.preprocess_dataset(df)
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
     K = 10

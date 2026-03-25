@@ -10,8 +10,7 @@ from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import kron, eye, lil_matrix
 import time
-from coreset import compute_fair_coreset, preprocess_dataset
-from evaluate import plot_execution_times, compute_pof, make_result, audit_fairness_proportional, evaluate, \
+from evaluate import plot_execution_times, make_result, audit_fairness_proportional, evaluate, \
     plot_spatial_clusters, plot_cluster_pof
 from kmedian import kmedian, pairwise_l1
 import csv_loader
@@ -75,32 +74,7 @@ def solve_fair_lp(
     upper_bounds: np.ndarray,
 ) -> Optional[np.ndarray]:
     """
-    Solve the Fair p-Assignment LP relaxation w(Eq. 1 from Bera et al. 2019)
-    for FIXED centers.
-
-    Decision variables
-    ------------------
-    x_{ij} ∈ [0, 1]  — fractional assignment of point i to center j.
-    Flattened into a vector of length n*k (row-major: index = i*k + j).
-
-    Objective  (weighted L1 cost)
-    ------------------------------
-    min  Σ_{i,j}  w_i · d(x_i, c_j) · x_{ij}
-
-    Constraints
-    -----------
-    (assignment) Σ_j x_{ij} = 1                          ∀ i
-    (MP lower)   β_h · Σ_i x_{ij} ≤ Σ_{i∈Col_h} x_{ij}  ∀ j, ∀ h
-    (RD upper)   Σ_{i∈Col_h} x_{ij} ≤ α_h · Σ_i x_{ij}  ∀ j, ∀ h
-
-    Both fairness constraints are reformulated as ≤ 0 inequalities for
-    linprog (scipy uses A_ub @ x ≤ b_ub convention):
-
-      MP:  β_h * Σ_i x_{ij}  −  Σ_{i∈Col_h} x_{ij}  ≤ 0
-      RD:  Σ_{i∈Col_h} x_{ij}  −  α_h * Σ_i x_{ij}  ≤ 0
-
     Returns
-    -------
     x_lp : (n, k) fractional assignment matrix, or None if infeasible.
     """
     dataset_len = len(X)
@@ -156,8 +130,6 @@ def iterative_rounding(
     D: np.ndarray,
 ) -> np.ndarray:
     """
-    Parameters
-    ----------
     X          : (n, d)  point coordinates
     centers    : (k, d)  center coordinates
     weights    : (n,)    point weights  (1.0 for unweighted data)
@@ -166,7 +138,6 @@ def iterative_rounding(
     D          : (n, k)  precomputed L1 distance matrix
 
     Returns
-    -------
     labels : (n,) integer cluster assignment (index into centers)
     """
     dataset_len, nr_of_centers = x_lp.shape
@@ -184,7 +155,7 @@ def iterative_rounding(
     ])
 
     fair_active = np.ones((max_group_code, nr_of_centers), dtype=bool)
-    # Cache: for each point, which centers still have a nonzero LP variable?
+    # cache for each point, which centers still have a nonzero LP variable?
     allowed = [set(np.where(x_lp[i] > 1e-9)[0]) for i in range(dataset_len)]
 
     iteration_amount = (dataset_len + nr_of_centers) * max_group_code + 10
@@ -194,11 +165,11 @@ def iterative_rounding(
             break
         nr_unassigned = len(still_unassigned)
 
-        # ---- Enumerate active variables ------------------------------------
-        # A variable x_{ij} is active if:
-        #   - point i is unassigned, AND
+        # enumerate active variables
+        # variable x_{ij} is active if:
+        #   - point i is unassigned
         #   - center j is in allowed[i]
-        # We enumerate them as (local_row, center) pairs with a flat index.
+        # enumerate them as (local_row, center) pairs with a flat index
         var_list = [(idx, j) for idx, unassigned in enumerate(still_unassigned) for j in sorted(allowed[unassigned])]
         nr_vars_lp = len(var_list)
 
@@ -221,7 +192,6 @@ def iterative_rounding(
         ineq_rows, ineq_rhs = [], []
 
         def _add_range(coeffs: dict[int, float], low: float, high: float) -> None:
-            """Add  lo ≤ Σ coeffs[v]*x_v ≤ hi  as two ≤ rows."""
             row_p, row_n = np.zeros(nr_vars_lp), np.zeros(nr_vars_lp)
             high = max(high, low)
             for value, coefficient in coeffs.items():
@@ -273,7 +243,7 @@ def iterative_rounding(
         _result = result.x
         best_v, best_val = 0, -1
         newly_assigned = False
-        # ---- Commit integral variables / prune zero variables --------------
+        # commit integral variables / prune zero variables
         for enum, (unassigned_point_enum, j) in enumerate(var_list):
             i = int(still_unassigned[unassigned_point_enum])
             val = _result[enum]
@@ -291,8 +261,8 @@ def iterative_rounding(
                 # x_{ij} ≈ 0 → prune this variable
                 allowed[i].discard(j)
 
-        # ---- If no variable became integral: force-commit the highest one --
-        # This is a numerical fallback; the Kiraly et al. matroid argument
+        # if no variable became integral: force-commit the highest one
+        # numerical fallback
         # guarantees a vertex solution exists, but floating-point LP solvers
         # sometimes return near-integral solutions just below the threshold.
         if not newly_assigned:
@@ -304,9 +274,8 @@ def iterative_rounding(
             group_weighted_mass[group_codes[i_b], j_b] = max(0.0, group_weighted_mass[group_codes[i_b], j_b] - weights[i_b])
             allowed[i_b] = set()
 
-        # ---- Drop fairness constraints where sparsity condition is met -----
-        # Per the paper: drop (j, h) constraint once the number of fractional
-        # variables x_{ij} with i ∈ Col_h is ≤ 2(Δ+1) = 4.
+        # drop fairness constraints where sparsity condition is met
+        # drop (j, h) constraint once the number of fractional
         for h in range(max_group_code):
             for j in range(nr_of_centers):
                 if fair_active[h, j]:
@@ -369,8 +338,7 @@ def fair_clustering(
          ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
              Any, dtype[Any]] | Any, ndarray, list, ndarray, ndarray] | None:
     """
-    Parameters
-    ----------
+
     df                  : DataFrame with feature and group columns.
     feature_cols        : Column names used as spatial coordinates for clustering.
     protected_group_col : Column name containing group labels (any hashable type).
@@ -387,7 +355,6 @@ def fair_clustering(
     random_seed         : RNG seed for reproducibility.
 
     Returns
-    -------
     centers : (k, d) final center coordinates (in the scaled feature space)
     labels  : (n,)   integer cluster assignment per row of df
     cost    : total weighted L1 assignment cost
@@ -505,7 +472,7 @@ if __name__ == "__main__":
     ##)
     ##print(f"[Coreset] Fair cost = {cost_c:,.2f}")
 
-    preprocessed_df = preprocess_dataset(df)
+    preprocessed_df = csv_loader.preprocess_dataset(df)
 
     ### ---- Without coreset (uniform weights) ----
     ##print("\n=== Direct points mode (no coreset) ===")
