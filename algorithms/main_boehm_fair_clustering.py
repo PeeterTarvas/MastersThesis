@@ -20,7 +20,8 @@ from coreset import preprocess_dataset
 import numpy as np
 import csv_loader
 from coreset import preprocess_dataset
-from evaluate import make_result, evaluate, audit_fairness_exact_balance
+from evaluate import make_result, evaluate, audit_fairness_exact_balance, plot_pof_comparison, plot_group_pof, \
+    plot_cost_breakdown
 from evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_pof
 
 
@@ -256,12 +257,11 @@ if __name__ == "__main__":
 
     audit_fairness_exact_balance(fair_result)
 
-    plot_spatial_clusters(df_balanced, fair_result,
-                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
-                          weight_col=None)
+    plot_execution_times(timing, title="Essential k-Median — Run Time")
+    plot_spatial_clusters(df_balanced, fair_result, feature_cols=FEATURE_COLS, group_col=PROTECTED_COL, weight_col=None)
     plot_cluster_pof([summary])
-
-    plot_execution_times(timing, title="Böhm et al. — Run Time")
-
+    plot_pof_comparison([summary])
+    plot_group_pof([summary])
+    plot_cost_breakdown([summary])
     print("Groups pruned to: " + str(size_pruned_to))
 

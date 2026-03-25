@@ -243,7 +243,7 @@ def audit_fairness_exact_balance(
     print(f"\n[Fairness Audit — Exact Balance] '{result.algorithm}'")
 
     for j in range(result.k):
-        at_j    = result.labels == j
+        at_j= result.labels == j
         total_j = int(at_j.sum())
         if total_j == 0:
             continue
@@ -263,8 +263,7 @@ def audit_fairness_exact_balance(
 
 def evaluate(
     result:             ClusteringResult,
-    unfair_result:      Optional[ClusteringResult] = None,
-    verbose:            bool = True,
+    unfair_result:      Optional[ClusteringResult] = None
 ) -> dict:
     """
     Compute all thesis metrics for one algorithm result.
@@ -289,22 +288,25 @@ def evaluate(
     gpof  = {}
     cpof  = {}
     unfair_cluster_costs = {}
+    unfair_group_costs = {}
     if unfair_result is not None:
         unfair_group_costs   = compute_group_costs(unfair_result)
         unfair_cluster_costs = compute_cluster_costs(unfair_result)
         gpof = compute_gpof(fair_group_costs, unfair_group_costs)
         cpof = compute_cluster_pof(result, unfair_result)
-
+    valid_gpof = [v for v in gpof.values() if v != float('inf')] if gpof else []
+    valid_cpof = [v for v in cpof.values() if v != float('inf')] if cpof else []
     summary = {
         "Algorithm":             result.algorithm,
         "Total Cost (Fair)":     total_fair,
         "Total Cost (Unfair)":   result.unfair_cost,
         "PoF":                   compute_pof(total_fair, result.unfair_cost),
-        "Max G-PoF":             max(gpof.values()) if gpof else None,
-        "Avg G-PoF":             float(np.mean(list(gpof.values()))) if gpof else None,
-        "Max C-PoF":             max(cpof.values()) if cpof else None,
-        "Avg C-PoF":             float(np.mean(list(cpof.values()))) if cpof else None,
-        "Group_Costs":           fair_group_costs,
+        "Max G-PoF":             max(valid_gpof),
+        "Avg G-PoF":             float(np.mean(valid_gpof)),
+        "Max C-PoF":             max(valid_cpof),
+        "Avg C-PoF":             float(np.mean(valid_cpof)),
+        "Group_Costs (Fair)":    fair_group_costs,
+        "Group_Costs (Unfair)":  unfair_group_costs,
         "Group_PoFs":            gpof,
         "Cluster_Costs (Fair)":  fair_cluster_costs,
         "Cluster_Costs (Unfair)":unfair_cluster_costs,
@@ -329,7 +331,10 @@ def _print_summary(s: dict) -> None:
         print(f"    Max G-PoF  : {s['Max G-PoF']:>10.4f}")
         print(f"    Avg G-PoF  : {s['Avg G-PoF']:>10.4f}")
         for g, v in s["Group_PoFs"].items():
-            print(f"    {str(g):20s}: {v:.4f}")
+            fair_g = s["Group_Costs (Fair)"].get(g, 0.0)
+            unfair_g = s["Group_Costs (Unfair)"].get(g, 0.0)
+            print(f"    {str(g):15s}: PoF={v:.4f}  "
+                  f"fair={fair_g:,.1f}  unfair={unfair_g:,.1f}")
 
     if s["Max C-PoF"] is not None:
         print(f"\n  Cluster-level C-PoF:")
@@ -337,7 +342,7 @@ def _print_summary(s: dict) -> None:
         print(f"    Avg C-PoF  : {s['Avg C-PoF']:>10.4f}")
         for j, v in s["Cluster_PoFs"].items():
             fair_c   = s["Cluster_Costs (Fair)"].get(j, 0.0)
-            unfair_c = s["Cluster_Costs (Unfair)"].get(j, 0.0)  # matched cluster
+            unfair_c = s["Cluster_Costs (Unfair)"].get(j, 0.0)
             print(f"    Cluster {j:3d}  : PoF={v:.4f}  "
                   f"fair={fair_c:,.1f}  unfair={unfair_c:,.1f}")
 
@@ -411,64 +416,57 @@ def plot_spatial_clusters(
     weight_col:   Optional[str] = "Weight",
     save_path:    Optional[str] = None,
 ) -> None:
-    """
-    Three-panel plot:
-      Left   — scatter coloured by CLUSTER (with centre markers)
-      Middle — same points coloured by DEMOGRAPHIC GROUP
-      Right  — stacked bar of normalised group composition per cluster
-    """
     lat_col, lon_col = feature_cols
     df_vis = df.copy()
     df_vis["_Cluster"] = result.labels
 
-    fig, axes = plt.subplots(1, 3, figsize=(21, 6))
-    fig.suptitle(f"Cluster Visualisation — {result.algorithm}", fontsize=13)
-
-    # --- Panel 1: coloured by cluster ---
-    ax = axes[0]
     jitter = 0.008
     df_jit = df_vis.copy()
     df_jit[lon_col] = df_jit[lon_col] + np.random.uniform(-jitter, jitter, len(df_jit))
     df_jit[lat_col] = df_jit[lat_col] + np.random.uniform(-jitter, jitter, len(df_jit))
 
+    fig1, ax1 = plt.subplots(figsize=(7, 6))
     sns.scatterplot(
-        data=df_jit, x=lon_col, y=lat_col,
-        hue="_Cluster", palette="tab10",
-        alpha=0.4, s=14, legend="full", ax=ax,
+        data=df_jit, x=lon_col, y=lat_col, hue="_Cluster", palette="tab10",
+        alpha=0.4, s=14, legend="full", ax=ax1,
     )
-    ax.scatter(
+    ax1.scatter(
         result.centers[:, 1], result.centers[:, 0],
         c="red", marker="X", s=150, zorder=5, label="Centers",
     )
-    ax.set_title("By Cluster")
-    ax.set_xlabel("Longitude (scaled)")
-    ax.set_ylabel("Latitude (scaled)")
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, title="Cluster", fontsize=7,
-              bbox_to_anchor=(1.01, 1), loc="upper left")
-    ax.grid(True, linestyle="--", alpha=0.4)
+    ax1.set_title(f"By Cluster — {result.algorithm}")
+    ax1.set_xlabel("Longitude (scaled)")
+    ax1.set_ylabel("Latitude (scaled)")
+    handles, labels = ax1.get_legend_handles_labels()
+    ax1.legend(handles, labels, title="Cluster", fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left")
+    ax1.grid(True, linestyle="--", alpha=0.4)
+    fig1.tight_layout()
+    if save_path:
+        fig1.savefig(f"{save_path}_cluster.png", dpi=150, bbox_inches="tight")
+    plt.show()
 
-    # --- Panel 2: coloured by demographic group ---
-    ax = axes[1]
+    fig2, ax2 = plt.subplots(figsize=(7, 6))
     sns.scatterplot(
-        data=df_jit, x=lon_col, y=lat_col,  # reuse same jittered df
-        hue=group_col, palette="Set2",
-        alpha=0.4, s=14, legend="full", ax=ax,
+        data=df_jit, x=lon_col, y=lat_col, hue=group_col, palette="Set2",
+        alpha=0.4, s=14, legend="full", ax=ax2,
     )
-    ax.scatter(
+    ax2.scatter(
         result.centers[:, 1], result.centers[:, 0],
         c="black", marker="X", s=150, zorder=5, label="Centers",
     )
-    ax.set_title("By Demographic Group")
-    ax.set_xlabel("Longitude (scaled)")
-    ax.set_ylabel("")
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, title=group_col, fontsize=7,
-              bbox_to_anchor=(1.01, 1), loc="upper left")
-    ax.grid(True, linestyle="--", alpha=0.4)
+    ax2.set_title(f"By Demographic Group — {result.algorithm}")
+    ax2.set_xlabel("Longitude (scaled)")
+    ax2.set_ylabel("Latitude (scaled)")
+    handles, labels = ax2.get_legend_handles_labels()
+    ax2.legend(handles, labels, title=group_col, fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left")
+    ax2.grid(True, linestyle="--", alpha=0.4)
+    fig2.tight_layout()
+    if save_path:
+        fig2.savefig(f"{save_path}_group.png", dpi=150, bbox_inches="tight")
+    plt.show()
 
-    # --- Panel 3: group composition per cluster ---
-    ax = axes[2]
+    # --- Plot 3: Group Composition Stacked Bar ---
+    fig3, ax3 = plt.subplots(figsize=(7, 6))
     w_col = weight_col if (weight_col and weight_col in df_vis.columns) else None
     if w_col:
         comp = df_vis.groupby(["_Cluster", group_col])[w_col].sum().unstack(fill_value=0)
@@ -476,19 +474,17 @@ def plot_spatial_clusters(
         comp = df_vis.groupby(["_Cluster", group_col]).size().unstack(fill_value=0)
 
     comp.div(comp.sum(axis=1), axis=0).plot(
-        kind="bar", stacked=True, ax=ax, colormap="Set2", legend=True
+        kind="bar", stacked=True, ax=ax3, colormap="Set2", legend=True
     )
-    ax.set_title("Group Composition per Cluster")
-    ax.set_xlabel("Cluster ID")
-    ax.set_ylabel("Fraction")
-    ax.legend(title=group_col, bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=7)
-    ax.tick_params(axis="x", rotation=0)
-
-    fig.tight_layout()
+    ax3.set_title(f"Group Composition per Cluster — {result.algorithm}")
+    ax3.set_xlabel("Cluster ID")
+    ax3.set_ylabel("Fraction")
+    ax3.legend(title=group_col, bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=7)
+    ax3.tick_params(axis="x", rotation=0)
+    fig3.tight_layout()
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig3.savefig(f"{save_path}_composition.png", dpi=150, bbox_inches="tight")
     plt.show()
-
 
 def plot_pof_comparison(
     summaries: list[dict],
@@ -637,19 +633,19 @@ def plot_cost_breakdown(
     """
     all_groups: list = []
     for s in summaries:
-        for g in s.get("Group_Costs", {}):
+        for g in s.get("Group_Costs (Fair)", {}):
             if g not in all_groups:
                 all_groups.append(g)
 
     fig, ax  = plt.subplots(figsize=(10, 5))
-    bar_width = 0.5
+    bar_width = 0.1
     x         = np.arange(len(summaries))
     bottoms   = np.zeros(len(summaries))
 
     for gi, g in enumerate(all_groups):
         vals = []
         for s in summaries:
-            gc  = s.get("Group_Costs", {})
+            gc  = s.get("Group_Costs (Fair)", {})
             uc  = s["Total Cost (Unfair)"]
             vals.append(gc.get(g, 0.0) / uc if uc else 0.0)
         ax.bar(x, vals, bar_width, bottom=bottoms, label=str(g),

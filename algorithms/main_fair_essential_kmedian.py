@@ -5,8 +5,7 @@ import networkx as nx
 from numpy import ndarray, dtype, floating
 from numpy._typing import _64Bit
 from scipy.optimize import linprog
-from scipy.sparse import lil_matrix
-
+from scipy.sparse import lil_matrix, kron, eye
 import csv_loader
 from algorithms.main_boehm_fair_clustering import evaluate_fairness
 from coreset import compute_fair_coreset, preprocess_dataset
@@ -18,15 +17,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from evaluate import make_result, evaluate, audit_fairness_proportional, plot_execution_times, plot_spatial_clusters, \
-    plot_cluster_pof
+    plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown
 from kmedian import kmedian, pairwise_l1
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     """Map arbitrary group labels -> contiguous integers 0..H-1."""
-    cats: pd.Categorical = pd.Categorical(group_series)
-    cats.codes.astype(dtype=np.int32)
-    return cats.codes.astype(dtype=np.int32), list(cats.categories)
+    cats = pd.Categorical(group_series)
+    return cats.codes.astype(np.int32), list(cats.categories)
 
 
 def proportional_bounds(
@@ -83,18 +81,16 @@ def solve_fair_lp(
     -------
     x : (n, k) fractional assignment matrix, or None if infeasible.
     """
-    n, d = x.shape
+    total_points, d = x.shape
     nr_of_centers = len(centers)
-    n_vars = n * nr_of_centers
+    n_vars = total_points * nr_of_centers
     lower_bound_len = len(lower_bound)
 
     distances = pairwise_l1(x, centers).astype(np.float64)
     cost_to_center = (distances * weights[:, np.newaxis]).ravel()
-    # every
-    a_equality_constraint = lil_matrix((n, n_vars), dtype=np.float64)
-    for i in range(n):
-        a_equality_constraint[i, i * nr_of_centers:(i + 1) * nr_of_centers] = 1.0
-    b_equality_constraint = np.ones(n)
+
+    a_equality_constraint = kron(eye(total_points), np.ones((1, nr_of_centers)), format='csr')
+    b_equality_constraint = np.ones(total_points)
 
     n_ineq = 2 * lower_bound_len * nr_of_centers
     a_upper_bound = lil_matrix((n_ineq, n_vars), dtype=np.float64)
@@ -104,12 +100,11 @@ def solve_fair_lp(
     for center_index in range(nr_of_centers):
         for h in range(lower_bound_len):
             in_group = (group_codes == h)
-            for i in range(n):
-                col = i * nr_of_centers + center_index
-                # lower bound row: lower_bound * x_{ij} - (x_{ij} if i∈Col_h)
-                a_upper_bound[row, col] = lower_bound[h] - (1.0 if in_group[i] else 0.0)
-                # upper bound row: -upper_bound * x_{ij} + (x_{ij} if i∈Col_h)
-                a_upper_bound[row + 1, col] = -upper_bound[h] + (1.0 if in_group[i] else 0.0)
+            cols = np.arange(total_points) * nr_of_centers + center_index
+            # lower bound row: lower_bound * x_{ij} - (x_{ij} if i∈Col_h)
+            a_upper_bound[row, cols] = lower_bound[h] - in_group
+            # upper bound row: -upper_bound * x_{ij} + (x_{ij} if i∈Col_h)
+            a_upper_bound[row + 1, cols] = in_group -upper_bound[h]
             row += 2
 
     A_eq_csc = a_equality_constraint.tocsc()
@@ -130,7 +125,7 @@ def solve_fair_lp(
         warnings.warn(f"LP solver returned status {result.status}: {result.message}")
         return None
 
-    return result.x.reshape((n, nr_of_centers))
+    return result.x.reshape((total_points, nr_of_centers))
 
 
 def min_cost_flow_rounding(
@@ -151,7 +146,6 @@ def min_cost_flow_rounding(
 
     # 2. Integer components and remainders
     floor_mass_group = np.floor(mass_group + 1e-6).astype(int)
-    frac_mass_group = mass_group - floor_mass_group
 
     # Total supply must equal total demand
     total_supply = int(round(weights.sum()))
@@ -403,3 +397,6 @@ if __name__ == "__main__":
                           feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
                           weight_col=None)
     plot_cluster_pof([summary])
+    plot_pof_comparison([summary])
+    plot_group_pof([summary])
+    plot_cost_breakdown([summary])
