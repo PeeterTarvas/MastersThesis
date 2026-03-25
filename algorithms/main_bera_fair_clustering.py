@@ -3,7 +3,6 @@ from __future__ import annotations
 import warnings
 from typing import Optional, Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from numpy import ndarray, dtype, floating
@@ -308,7 +307,6 @@ def iterative_rounding(
         # ---- Drop fairness constraints where sparsity condition is met -----
         # Per the paper: drop (j, h) constraint once the number of fractional
         # variables x_{ij} with i ∈ Col_h is ≤ 2(Δ+1) = 4.
-            # 8. Drop constraints meeting sparsity condition
         for h in range(max_group_code):
             for j in range(nr_of_centers):
                 if fair_active[h, j]:

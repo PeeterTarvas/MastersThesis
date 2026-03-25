@@ -1,25 +1,12 @@
-"""
-k-Median Clustering
-====================
-Standalone implementation of vanilla k-median clustering.
-Used as a baseline and as the first step in fair clustering.
-
-Algorithm: Single-swap local search (5-approximation, Arya et al. 2004),
-           seeded with k-median++ (adapted D^2 sampling for L1).
-"""
-
 import numpy as np
 from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from numba import njit
+
 import csv_loader
 from coreset import compute_fair_coreset
-
-
-# ---------------------------------------------------------------------------
-# Distance helpers
-# ---------------------------------------------------------------------------
 
 def l1_distance(a: np.ndarray, b: np.ndarray) -> float:
     """Manhattan (L1) distance between two points."""
@@ -60,11 +47,6 @@ def assignment_cost(X: np.ndarray, centers: np.ndarray, _weights: Optional[np.nd
     cost = float(np.dot(_weights, min_dists))
     return labels, cost
 
-
-# ---------------------------------------------------------------------------
-# Seeding: k-median++ (D^1 sampling, L1 analog of k-means++)
-# ---------------------------------------------------------------------------
-
 def kmedian_plus_plus_seed(
     x: np.ndarray,
     k: int,
@@ -86,7 +68,6 @@ def kmedian_plus_plus_seed(
     n = len(x)
     chosen_indices = []
 
-    # First center: uniform random
     probs = _weights / _weights.sum()
     idx = int(rng.choice(n, p=probs))
     chosen_indices.append(idx)
@@ -95,81 +76,16 @@ def kmedian_plus_plus_seed(
         current_centers = x[chosen_indices]
         d = pairwise_l1(x, current_centers)
         min_dists = d.min(axis=1)
-        weighted_dists = _weights * min_dists # w_i * d(x_i, nearest center)
+        weighted_dists = _weights * min_dists
         total = weighted_dists.sum()
         if total == 0:
-            probs = np.ones(n) / n  # all remaining points are already at a center; pick uniformly
+            probs = np.ones(n) / n
         else:
             probs = weighted_dists / total
         idx = int(rng.choice(n, p=probs))
         chosen_indices.append(idx)
 
     return x[chosen_indices].copy()
-
-
-# ---------------------------------------------------------------------------
-# Core: single-swap local search k-median
-# ---------------------------------------------------------------------------
-
-def _local_search_kmedian(
-    X: np.ndarray,
-    k: int,
-    _weights: np.ndarray,
-    init_centers: np.ndarray,
-    max_iter: int = 10,
-) -> tuple[np.ndarray, np.ndarray, float]:
-    """
-    Single-swap local search for k-median (Arya et al. 2004 style).
-
-    At each iteration, try swapping each current center with each non-center
-    point. Accept the swap that gives the greatest cost reduction.
-    Stops when no improving swap exists or max_iter is reached.
-
-    Returns
-    -------
-    centers : (k, d) final centers
-    labels  : (n,) assignment of each point to a center index
-    cost    : total L1 cost
-    """
-    n, d = X.shape
-    centers = init_centers.copy()
-    labels, cost = assignment_cost(X, centers, _weights)
-
-    # Track which points are currently centers (by index)
-    # We work with actual coordinate copies; centers need not be data points
-    # but for k-median it is standard to restrict centers to data points.
-    center_set = set(map(tuple, centers.tolist()))
-
-    for iteration in range(max_iter):
-        best_gain = 0.0
-        best_swap = None  # (old_center_idx_in_centers, new_point_idx_in_X)
-
-        for ci in range(k):
-            for xi in range(n):
-                candidate = X[xi]
-                if tuple(candidate.tolist()) in center_set:
-                    continue
-
-                # Build trial centers with the swap
-                trial_centers = centers.copy()
-                trial_centers[ci] = candidate
-                _, trial_cost = assignment_cost(X, trial_centers, _weights)
-                gain = cost - trial_cost
-                if gain > best_gain:
-                    best_gain = gain
-                    best_swap = (ci, xi)
-
-        if best_swap is None:
-            break
-
-        ci, xi = best_swap
-        center_set.discard(tuple(centers[ci].tolist()))
-        centers[ci] = X[xi].copy()
-        center_set.add(tuple(centers[ci].tolist()))
-        labels, cost = assignment_cost(X, centers, _weights)
-
-    return centers, labels, cost
-
 
 def local_search_kmedian(
         X: np.ndarray,
@@ -245,9 +161,6 @@ def local_search_kmedian(
     return centers, labels, cost
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def kmedian(
     X: np.ndarray,
@@ -341,20 +254,3 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig('kmedian_clusters.png', dpi=150)
     plt.show()
-
-
-
-
-    #rng = np.random.default_rng(0)
-    #X = np.vstack([
-    #    rng.normal([0, 0], 0.1, (30, 2)),
-    #    rng.normal([5, 0], 0.1, (30, 2)),
-    #    rng.normal([0, 5], 0.1, (30, 2)),
-    #])
-    #centers, labels, cost = kmedian(X, k=3, n_trials=5, random_seed=42)
-    #print(f"Cost: {cost:.4f}")
-    #print(f"Centers:\n{centers}")
-    #print(f"Cluster sizes: {np.bincount(labels)}")
-
-
-    #X_out, weights = compute_fair_coreset(X_norm)

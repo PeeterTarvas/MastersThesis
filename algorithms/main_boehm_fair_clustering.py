@@ -50,7 +50,7 @@ def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> 
     return balanced_df, size_for_all_groups
 
 
-def _boehm_fair_clustering(
+def boehm_fair_clustering(
         x: np.ndarray,
         group_codes,
         k_centers,
@@ -140,7 +140,7 @@ def evaluate_fairness(
         print(f"\n  → WARNING: Found {violations} uneven group distributions.")
 
 
-def bohm_fair_clustering(
+def fair_clustering(
         df: pd.DataFrame,
         feature_cols: list[str],
         protected_group_col: str,
@@ -172,7 +172,7 @@ def bohm_fair_clustering(
     group_codes, group_names = encode_groups_to_int(df_balanced[protected_group_col])
 
     t0 = time.perf_counter()
-    fair_centers, fair_labels, fair_cost = _boehm_fair_clustering(x, group_codes,
+    fair_centers, fair_labels, fair_cost = boehm_fair_clustering(x, group_codes,
                                                                   k_centers=k, n_trials=kmedian_trials,
                                                                   max_iter=kmedian_max_iter)
     timing["Böhm Fair Clustering"] = time.perf_counter() - t0
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     K = 4
 
     (fair_centers, fair_labels, fair_cost, timing, unfair_centers,
-     unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced) = bohm_fair_clustering(
+     unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced) = fair_clustering(
         df_processed,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,

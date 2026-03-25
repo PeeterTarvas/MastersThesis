@@ -101,7 +101,7 @@ def solve_fair_lp(
             # lower bound row: lower_bound * x_{ij} - (x_{ij} if i∈Col_h)
             a_upper_bound[row, cols] = lower_bound[h] - in_group
             # upper bound row: -upper_bound * x_{ij} + (x_{ij} if i∈Col_h)
-            a_upper_bound[row + 1, cols] = in_group -upper_bound[h]
+            a_upper_bound[row + 1, cols] = in_group - upper_bound[h]
             row += 2
 
     A_eq_csc = a_equality_constraint.tocsc()
@@ -134,59 +134,33 @@ def min_cost_flow_rounding(
     n, k = x_lp.shape
     nr_groups = int(group_codes.max()) + 1
 
-    # 1. Calculate weighted mass per group per center
-    mass_group = np.zeros((nr_groups, k), dtype=np.float64)
-    for h in range(nr_groups):
-        is_in_group = (group_codes == h)
-        if is_in_group.any():
-            mass_group[h] = (x_lp[is_in_group] * weights[is_in_group, np.newaxis]).sum(axis=0)
-
-    # 2. Integer components and remainders
+    # calculate weighted mass per group per center
+    mass_group = np.array([
+        (x_lp[group_codes == group_idx] * weights[group_codes == group_idx, np.newaxis]).sum(axis=0)
+        for group_idx in range(nr_groups)
+    ])
+    # integer components and remainders
     floor_mass_group = np.floor(mass_group + 1e-6).astype(int)
 
-    # Total supply must equal total demand
+    # total supply must equal total demand
     total_supply = int(round(weights.sum()))
 
     G = nx.DiGraph()
+    sink = "sink_t"
+    G.add_node(sink, demand=total_supply)
 
-    # 3. Add Point Nodes (Sources)
-    # Each point j supplies its weight w_j
     for point in range(n):
-        point_node = f"p_{point}"
-        weighted_point = int(round(weights[point]))
-        G.add_node(point_node, demand=-weighted_point)
+        G.add_node(point, demand=-int(round(weights[point])))
+    points, centers = np.where(x_lp > 1e-9)
+    for point, center in zip(points, centers):
+        G.add_edge(point, f"ch_{group_codes[point]}_{center}", weight=D[point, center])
 
-        # Edges from Point -> Color-Center (ch)
-        # We only add edges where the LP assigned some mass
-        h = group_codes[point]
-        for center_indx in range(k):
-            if x_lp[point, center_indx] > 1e-9:
-                G.add_edge(point_node, f"ch_{h}_{center_indx}", weight=D[point, center_indx])
+    for center in range(k):
+        G.add_edge(f"c_{center}", sink, weight=0)
+        for group in range(nr_groups):
+            G.add_edge(f"ch_{group}_{center}",
+                       f"c_{center}", capacity=floor_mass_group[group, center] + 1, weight=0)
 
-    # 4. Add Intermediate and Sink Nodes
-    # Color-Center Node (ch) -> Center Node (c) -> Global Sink (t)
-    for i in range(k):
-        center_node = f"c_{i}"
-        for h in range(nr_groups):
-            ch_node = f"ch_{h}_{i}"
-
-            # This node 'consumes' the guaranteed integer mass
-            # and passes the fractional part forward
-            floor_val = floor_mass_group[h, i]
-
-            # Edge from Point to ch handles the 'floor' mass naturally
-            # Now we constrain the flow from ch to the center
-            # Capacity is floor + 1 (to allow for the fractional rounding)
-            G.add_edge(ch_node, center_node, capacity=floor_val + 1, weight=0)
-
-    # 5. Sink logic
-    global_sink = "sink_t"
-    G.add_node(global_sink, demand=total_supply)
-    for i in range(k):
-        # Allow each center to send its total collected mass to the sink
-        G.add_edge(f"c_{i}", global_sink, weight=0)
-
-    # 6. Solve
     try:
         flow_dict = nx.min_cost_flow(G)
     except nx.NetworkXUnfeasible:
@@ -198,22 +172,16 @@ def min_cost_flow_rounding(
         warnings.warn(f"Min-cost flow failed ({e}) — falling back to greedy rounding.")
         return np.argmin(D, axis=1).astype(np.int32)
 
-    # 7. Extract Labels
     labels = np.zeros(n, dtype=np.int32)
-    for j in range(n):
-        h = group_codes[j]
-        point_node = f"p_{j}"
-        # Find which center the flow went to
-        assigned_center = -1
-        best_flow = 0
-        for i in range(k):
-            ch_node = f"ch_{h}_{i}"
-            f_val = flow_dict.get(point_node, {}).get(ch_node, 0)
+    for point in range(n):
+        h = group_codes[point]
+        best_flow, assigned = 0, -1
+        for center in range(k):
+            f_val = flow_dict.get(point, {}).get(f"ch_{h}_{center}", 0)
             if f_val > best_flow:
-                best_flow, assigned_center = f_val, i
+                best_flow, assigned = f_val, center
 
-        # Fallback if flow is tiny/missing
-        labels[j] = assigned_center if assigned_center != -1 else np.argmin(D[j])
+        labels[point] = assigned if assigned != -1 else np.argmin(D[point])
 
     return labels
 
@@ -234,8 +202,6 @@ def fair_clustering(
     ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
         Any, dtype[Any]] | Any, ndarray, list, Any, Any]:
     """
-    Algorithm: Essentially Fair k-Median Clustering.
-
     Parameters
     ----------
     df           : DataFrame. Works with raw points OR a coreset.
