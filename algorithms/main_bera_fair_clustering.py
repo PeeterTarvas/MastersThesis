@@ -6,12 +6,14 @@ from typing import Optional, Any
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from numpy import ndarray
+from numpy import ndarray, dtype, floating
+from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import kron, eye, lil_matrix
 import time
 from coreset import compute_fair_coreset, preprocess_dataset
-from evaluate import plot_execution_times, compute_pof
+from evaluate import plot_execution_times, compute_pof, make_result, audit_fairness_proportional, evaluate, \
+    plot_spatial_clusters, plot_cluster_pof
 from kmedian import kmedian, pairwise_l1
 import csv_loader
 
@@ -423,7 +425,9 @@ def fair_clustering(
     kmedian_trials: int = 3,
     kmedian_max_iter: int = 50,
     random_seed: int = 42
-) -> tuple[ndarray, ndarray, float, dict[Any, Any]] | None:
+) -> tuple[
+         ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
+             Any, dtype[Any]] | Any, ndarray, list, ndarray, ndarray] | None:
     """
     Fair k-Median Clustering via the algorithm of Bera et al. (NeurIPS 2019).
 
@@ -528,7 +532,7 @@ def fair_clustering(
     t_start_kmedian = time.perf_counter()
     print(f"\nVanilla k-median (trials={kmedian_trials}, "
           f"max_iter={kmedian_max_iter}) ...")
-    centers, unfair_labels, unfair_cost = kmedian(
+    unfair_centers, unfair_labels, unfair_cost = kmedian(
         x, k_centers,
         _weights=weights,
         n_trials=kmedian_trials,
@@ -542,7 +546,7 @@ def fair_clustering(
     t_start_lp = time.perf_counter()
     print(f"\nSolving Fair LP relaxation  "
           f"(n_vars = {len(x) * k_centers:,}, n_constraints ≈ {len(x) + 2*nr_of_groups*k_centers:,}) ...")
-    x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bounds, upper_bounds)
+    x_lp = solve_fair_lp(x, unfair_centers, weights, group_codes, lower_bounds, upper_bounds)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
     if x_lp is None:
         # LP failed — fall back to unfair assignment
@@ -552,7 +556,7 @@ def fair_clustering(
         return None
 
     t_start_rounding = time.perf_counter()
-    distsances_to_centers = pairwise_l1(x, centers)
+    distsances_to_centers = pairwise_l1(x, unfair_centers)
     lp_cost = float(np.dot(
         weights,
         (distsances_to_centers * x_lp).sum(axis=1)
@@ -560,16 +564,16 @@ def fair_clustering(
     print(f"  → LP fractional cost:   {lp_cost:,.2f}")
     print(f"  → Integrality gap hint: "
           f"{lp_cost / unfair_cost:.3f}x unfair cost")
-    labels = iterative_rounding(
+    fair_labels = iterative_rounding(
          weights, group_codes, x_lp, distsances_to_centers
     )
     timing['Iterative Rounding'] = time.perf_counter() - t_start_rounding
 
     t_start_cost = time.perf_counter()
-    fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), labels]))
+    fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), fair_labels]))
     print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
 
-    audit_fairness(labels, group_codes, weights, group_names,
+    audit_fairness(fair_labels, group_codes, weights, group_names,
                    lower_bounds, upper_bounds, k_centers)
 
     print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
@@ -578,12 +582,11 @@ def fair_clustering(
 
     timing['Total Time'] = time.perf_counter() - t_start
 
-    return centers, labels, fair_cost, timing
+    return unfair_centers, unfair_labels, unfair_cost, fair_labels, fair_cost, timing, x, weights, group_codes, group_names, lower_bounds, upper_bounds
 
 
 
 if __name__ == "__main__":
-    # ---- With coreset ----
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
@@ -616,15 +619,54 @@ if __name__ == "__main__":
     ##    df['RAC1P'].astype(str) + "_" + df['SEX'].astype(str)
     ##)
 
-    centers_r, labels_r, cost_r, timing_r = fair_clustering(
+    FEATURE_COLS  = ["Lat_Scaled", "Lon_Scaled"]
+    PROTECTED_COL = "GROUP_ID"
+    K             = 10
+    ALPHA         = 0.02
+
+    (unfair_centers, unfair_labels, unfair_cost,
+     fair_labels, fair_cost, timing, x, weights,
+     group_codes, group_names, lower_bounds,
+     upper_bounds) = fair_clustering(
         preprocessed_df,
-        feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-        protected_group_col='GROUP_ID',
-        k_centers=10,
-        alpha=0.02,
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k_centers=K,
+        alpha=ALPHA,
         weight_col=None
     )
-    print(f"[Raw] Fair cost = {cost_r:,.2f}")
 
-    print(f"\nG-PoF (coreset): {compute_pof(cost_r, cost_r):.4f}")
-    plot_execution_times(timing_r, "Fair Clustering Run Time (n=10,000)")
+    fair_result = make_result(
+        algorithm="Bera et al.",
+        centers=unfair_centers,
+        labels=fair_labels,
+        fair_cost=fair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+        timing=timing,
+    )
+
+    unfair_result = make_result(
+        algorithm="Unfair k-Median (Bera baseline)",
+        centers=unfair_centers,
+        labels=unfair_labels,
+        fair_cost=unfair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+
+    summary = evaluate(fair_result, unfair_result=unfair_result)
+
+    audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
+
+    plot_execution_times(timing, title="Bera et al. — Run Time")
+    plot_spatial_clusters(preprocessed_df, fair_result,
+                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
+                          weight_col=None)
+    plot_cluster_pof([summary])

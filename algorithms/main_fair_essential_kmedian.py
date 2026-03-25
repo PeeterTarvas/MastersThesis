@@ -2,11 +2,13 @@ import warnings
 from typing import Optional, Any
 
 import networkx as nx
-from numpy import ndarray
+from numpy import ndarray, dtype, floating
+from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix
 
 import csv_loader
+from algorithms.main_boehm_fair_clustering import evaluate_fairness
 from coreset import compute_fair_coreset, preprocess_dataset
 
 import numpy as np
@@ -15,6 +17,8 @@ import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from evaluate import make_result, evaluate, audit_fairness_proportional, plot_execution_times, plot_spatial_clusters, \
+    plot_cluster_pof
 from kmedian import kmedian, pairwise_l1
 
 
@@ -24,11 +28,12 @@ def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     cats.codes.astype(dtype=np.int32)
     return cats.codes.astype(dtype=np.int32), list(cats.categories)
 
+
 def proportional_bounds(
-    group_codes: np.ndarray,
-    weights: np.ndarray,
-    n_groups: int,
-    alpha: float,
+        group_codes: np.ndarray,
+        weights: np.ndarray,
+        n_groups: int,
+        alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Derive per-group lower / upper bounds from proportional representation
@@ -47,12 +52,12 @@ def proportional_bounds(
 
 
 def solve_fair_lp(
-    x: np.ndarray,
-    centers: np.ndarray,
-    weights: np.ndarray,
-    group_codes: np.ndarray,
-    lower_bound: np.ndarray,
-    upper_bound: np.ndarray,
+        x: np.ndarray,
+        centers: np.ndarray,
+        weights: np.ndarray,
+        group_codes: np.ndarray,
+        lower_bound: np.ndarray,
+        upper_bound: np.ndarray,
 ) -> Optional[np.ndarray]:
     """
     Solve the Fair LP relaxation for *fixed* centers.
@@ -225,89 +230,6 @@ def min_cost_flow_rounding(
     return labels
 
 
-def evaluate_fairness(
-    labels: np.ndarray,
-    group_codes: np.ndarray,
-    weights: np.ndarray,
-    group_labels: list,
-    lower_bounds: np.ndarray,
-    upper_bounds: np.ndarray,
-    k: int,
-):
-    """Print per-cluster fairness via
-    D = pairwise_l1(X, centers)
-    labels = _mcf_rounding(x_lp, group_codes, weights, D)
-
-    cost = float(np.dot(weights, D[np.arange(len(X)), labels]))
-    print(f"  Integral cost after rounding: {cost:,.2f}")lations."""
-    violations = 0
-    for cluster in range(k):
-        at_cluster = labels == cluster
-        total_cluster = weights[at_cluster].sum()
-        if total_cluster == 0:
-            continue
-        for h, lbl in enumerate(group_labels):
-            mass_h = weights[at_cluster & (group_codes == h)].sum()
-            frac = mass_h / total_cluster
-            if frac < lower_bounds[h] - 1e-4 or frac > upper_bounds[h] + 1e-4:
-                violations += 1
-
-    if violations == 0:
-        print("[FairClustering] ✓ All clusters satisfy fairness bounds.")
-    else:
-        print(f"[FairClustering] ⚠  {violations} (cluster, group) pairs violate bounds "
-              "(additive violations ≤ 1 are expected by Lemma 7).")
-
-
-
-
-def visualize_fair_clusters(df, labels, centers, feature_cols, group_col):
-    """
-    Visualizes the spatial distribution and group composition of clusters.
-    """
-    df_vis = df.copy()
-    df_vis['Cluster'] = labels
-    lat_col, lon_col = feature_cols
-
-    plt.figure(figsize=(14, 6))
-
-    plt.subplot(1, 2, 1)
-    sns.scatterplot(data=df_vis, x=lon_col, y=lat_col, hue='Cluster',
-                    palette='tab10', alpha=0.6, s=15, legend='full')
-    plt.scatter(centers[:, 1], centers[:, 0], c='red', marker='X', s=100, label='Centers')
-    plt.title("Spatial Cluster Distribution")
-    plt.grid(True, linestyle='--', alpha=0.5)
-
-    plt.subplot(1, 2, 2)
-    comp = df_vis.groupby(['Cluster', group_col])['Weight'].sum().unstack().fillna(0)
-    comp_norm = comp.div(comp.sum(axis=1), axis=0)
-
-    comp_norm.plot(kind='bar', stacked=True, ax=plt.gca(), legend=False)
-    plt.title("Cluster Group Composition (Proportional)")
-    plt.xlabel("Cluster ID")
-    plt.ylabel("Weight Fraction")
-
-    plt.tight_layout()
-    plt.show()
-
-def plot_execution_times(timing_dict: dict, title: str = "Execution Time by Step"):
-    """Visualizes the time taken for each step in the fair clustering pipeline."""
-    steps = list(timing_dict.keys())
-    times = list(timing_dict.values())
-
-    plt.figure(figsize=(10, 6))
-    bars = plt.bar(steps, times, color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2', '#4C72B0'])
-    plt.ylabel('Time (seconds)')
-    plt.title(title)
-    plt.xticks(rotation=15)
-
-    for bar, t in zip(bars, times):
-        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05 * max(times),
-                 f'{t:.2f}s', ha='center', va='bottom', fontsize=10)
-
-    plt.tight_layout()
-    plt.show()
-
 def fair_clustering(
         df: pd.DataFrame,
         feature_cols: list,
@@ -320,7 +242,9 @@ def fair_clustering(
         kmedian_trials: int = 3,
         kmedian_max_iter: int = 50,
         random_seed: int = 42,
-) -> tuple[ndarray, Any, float] | tuple[ndarray, ndarray, float, dict[Any, Any]]:
+) -> tuple[ndarray, Any, float] | tuple[
+    ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
+        Any, dtype[Any]] | Any, ndarray, list, Any, Any]:
     """
     Algorithm: Essentially Fair k-Median Clustering.
 
@@ -356,10 +280,9 @@ def fair_clustering(
     else:
         weights = np.ones(len(x), dtype=np.float64)
 
+    group_codes, group_names = encode_groups_to_int(df[protected_group_col])
 
-    group_codes, group_labels = encode_groups_to_int(df[protected_group_col])
-
-    nr_of_groups = len(group_labels)
+    nr_of_groups = len(group_names)
 
     print(f"[FairClustering] n={len(x):,}  k={k_cluster}  groups={nr_of_groups}  "
           f"weighted={'yes' if weight_col and weight_col in df.columns else 'no (uniform)'}")
@@ -367,7 +290,7 @@ def fair_clustering(
     if lower_bound is None or upper_bound is None:
         lower_bound, upper_bound = proportional_bounds(group_codes, weights, nr_of_groups, alpha)
         print(f"[FairClustering] Proportional bounds (alpha={alpha}):")
-        for h, lbl in enumerate(group_labels):
+        for h, lbl in enumerate(group_names):
             print(f"  {lbl}: [{lower_bound[h]:.3f}, {upper_bound[h]:.3f}]")
 
     total = weights.sum()
@@ -376,14 +299,14 @@ def fair_clustering(
     if len(infeasible_groups) > 0:
         for h in infeasible_groups:
             warnings.warn(
-                f"Group '{group_labels[h]}' proportion {f[h]:.3f} is outside "
+                f"Group '{group_names[h]}' proportion {f[h]:.3f} is outside "
                 f"[{upper_bound[h]:.3f}, {lower_bound[h]:.3f}] — LP will be infeasible. "
                 "Increase alpha or adjust bounds.")
     timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
     t_start_kmedian = time.perf_counter()
     print("k-median for centering")
-    centers, _, unfair_cost = kmedian(
+    centers, unfair_labels, unfair_cost = kmedian(
         x, k_cluster, _weights=weights,
         n_trials=kmedian_trials,
         max_iter=kmedian_max_iter,
@@ -414,32 +337,69 @@ def fair_clustering(
 
     t_start_cost = time.perf_counter()
     cost = float(np.dot(weights, distances_to_centers[np.arange(len(x)), labels]))
-    evaluate_fairness(labels, group_codes, weights, group_labels, lower_bound, upper_bound, k_cluster)
     timing['Cost Calculation'] = time.perf_counter() - t_start_cost
 
-    visualize_fair_clusters(df, labels, centers, feature_cols, protected_group_col)
     timing['Total Time'] = time.perf_counter() - t_start
 
-    return centers, labels, cost, timing
+    return centers, unfair_labels, unfair_cost, labels, cost, timing, x, weights, group_codes, group_names, lower_bound, upper_bound
 
 
 if __name__ == "__main__":
- df = csv_loader.load_csv_chunked(
+    df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
         chunk_size=10_000,
         max_rows=10_000,
     )
- ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
- df = preprocess_dataset(df)
- centers_c, labels_c, cost_c, timing_c = fair_clustering(
-     df,
-     feature_cols=['Lat_Scaled', 'Lon_Scaled'],
-     protected_group_col='GROUP_ID',
-     k_cluster=10,
-     alpha=0.2,
-     weight_col='Weight',
- )
+    ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
+    df = preprocess_dataset(df)
+    FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
+    PROTECTED_COL = "GROUP_ID"
+    K = 10
+    ALPHA = 0.05
 
- plot_execution_times(timing_c, "Fair Clustering Run Time (n=10,000)")
+    (centers, unfair_labels, unfair_cost, labels, cost, timing,
+     x, weights, group_codes, group_names, lower_bounds, upper_bounds) = fair_clustering(
+        df,
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k_cluster=K,
+        alpha=ALPHA,
+        weight_col='Weight',
+    )
+
+    fair_result = make_result(
+        algorithm="Essential k-Median",
+        centers=centers,
+        labels=labels,
+        fair_cost=cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+        timing=timing,
+    )
+
+    unfair_result = make_result(
+        algorithm="Unfair k-Median (Essential baseline)",
+        centers=centers,
+        labels=unfair_labels,
+        fair_cost=unfair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+
+    summary = evaluate(fair_result, unfair_result=unfair_result)
+
+    audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
+
+    plot_execution_times(timing, title="Essential k-Median — Run Time")
+    plot_spatial_clusters(df, fair_result,
+                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
+                          weight_col=None)
+    plot_cluster_pof([summary])

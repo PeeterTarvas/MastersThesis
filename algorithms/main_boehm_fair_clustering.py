@@ -17,6 +17,13 @@ from kmedian import kmedian, pairwise_l1, assignment_cost
 import csv_loader
 from coreset import preprocess_dataset
 
+import numpy as np
+import csv_loader
+from coreset import preprocess_dataset
+from evaluate import make_result, evaluate, audit_fairness_exact_balance
+from evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_pof
+
+
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     """
     Map group label strings to contiguous integers 0…L-1.
@@ -28,6 +35,7 @@ def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     """
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
+
 
 def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> (pd.DataFrame, int):
     group_counts = df[group_col].value_counts()
@@ -45,6 +53,7 @@ def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> 
     print(f"Pruned to size {size_for_all_groups} df: \n")
     print(balanced_df.head())
     return balanced_df, size_for_all_groups
+
 
 def _boehm_fair_clustering(
         x: np.ndarray,
@@ -78,7 +87,8 @@ def _boehm_fair_clustering(
         for other_color in unique_groups:
             if other_color == baseline_color:
                 continue
-            cost_matrix = cdist(x_groups[other_color], x_groups[baseline_color], metric='cityblock') # cityblock == manhattan
+            cost_matrix = cdist(x_groups[other_color], x_groups[baseline_color],
+                                metric='cityblock')  # cityblock == manhattan
             row_ind, matched_base_ind = linear_sum_assignment(cost_matrix)
             mapped_labels = base_labels[matched_base_ind]
             trial_labels[group_indices[other_color]] = mapped_labels
@@ -105,7 +115,6 @@ def evaluate_fairness(
     number of points from each protected group.
     """
     print(f"\n[Evaluation] Fairness check (Böhm Exact Matching):")
-    total_points = len(labels)
     H = len(group_names)
 
     violations = 0
@@ -135,36 +144,59 @@ def evaluate_fairness(
     else:
         print(f"\n  → WARNING: Found {violations} uneven group distributions.")
 
+
 def bohm_fair_clustering(
-    df: pd.DataFrame,
-    feature_cols: list[str],
-    protected_group_col: str,
-    k: int,
-    kmedian_trials: int = 3,
-    kmedian_max_iter: int = 30,
-    random_seed: Optional[int] = 42
-) -> tuple[ndarray, ndarray, float, ndarray, ndarray, float, Any]:
+        df: pd.DataFrame,
+        feature_cols: list[str],
+        protected_group_col: str,
+        k: int,
+        kmedian_trials: int = 3,
+        kmedian_max_iter: int = 30,
+        random_seed: Optional[int] = 42
+) -> tuple[ndarray, ndarray, float, dict[Any, Any], ndarray, ndarray, float, Any, Any, ndarray, list, Any]:
     timing = {}
     t_start = time.perf_counter()
 
+    t0 = time.perf_counter()
     df_balanced, size_pruned_to = balance_dataset_for_boehm(df, group_col=protected_group_col, random_seed=42)
+    timing["Balance Dataset"] = time.perf_counter() - t0
 
     x = df_balanced[feature_cols].to_numpy(dtype=np.float64)
+    timing["Balance Dataset"] = time.perf_counter() - t0
 
-    unfair_center, unfair_label, unfair_cost =  kmedian(
-            X=x,
-            k=k,
-            n_trials=kmedian_trials,
-            max_iter=kmedian_max_iter,
-            random_seed=random_seed
-        )
+    t0 = time.perf_counter()
+    unfair_center, unfair_label, unfair_cost = kmedian(
+        X=x,
+        k=k,
+        n_trials=kmedian_trials,
+        max_iter=kmedian_max_iter,
+        random_seed=random_seed
+    )
+    timing["Vanilla k-Median"] = time.perf_counter() - t0
 
     group_codes, group_names = encode_groups_to_int(df_balanced[protected_group_col])
+
+    t0 = time.perf_counter()
     fair_centers, fair_labels, fair_cost = _boehm_fair_clustering(x, group_codes,
                                                                   k_centers=k, n_trials=kmedian_trials,
                                                                   max_iter=kmedian_max_iter)
+    timing["Böhm Fair Clustering"] = time.perf_counter() - t0
+
     evaluate_fairness(fair_labels, group_codes, group_names, k)
-    return fair_centers, fair_labels, fair_cost, unfair_center, unfair_label, unfair_cost, size_pruned_to
+    timing["Total"] = time.perf_counter() - t_start
+    return (fair_centers,
+            fair_labels,
+            fair_cost,
+            timing,
+            unfair_center,
+            unfair_label,
+            unfair_cost,
+            size_pruned_to,
+            x,
+            group_codes,
+            group_names,
+            df_balanced
+            )
 
 
 
@@ -173,19 +205,63 @@ if __name__ == "__main__":
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
-        chunk_size=10_0,
-        max_rows=10_0,
+        chunk_size=10_000,
+        max_rows=10_000,
     )
 
     df_processed = preprocess_dataset(df)
 
-    centers_c, labels_c, cost_c, unfair_center, unfair_label, unfair_cost, size_pruned_to = bohm_fair_clustering(
+    FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
+    PROTECTED_COL = "GROUP_ID"
+    K = 4
+
+    (fair_centers, fair_labels, fair_cost, timing, unfair_centers,
+     unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced) = bohm_fair_clustering(
         df_processed,
-        feature_cols=["Lat_Scaled", "Lon_Scaled"],
-        protected_group_col="GROUP_ID",
-        k=4,
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k=5,
         kmedian_trials=3,
         kmedian_max_iter=30,
         random_seed=42,
     )
+
+    weights = np.ones(len(x), dtype=np.float64)
+
+    fair_result = make_result(
+        algorithm="Böhm et al.",
+        centers=fair_centers,
+        labels=fair_labels,
+        fair_cost=fair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+
+    unfair_result = make_result(
+        algorithm="Unfair k-Median (Böhm baseline)",
+        centers=unfair_centers,
+        labels=unfair_labels,
+        fair_cost=unfair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+
+    summary = evaluate(fair_result, unfair_result=unfair_result)
+
+    audit_fairness_exact_balance(fair_result)
+
+    plot_spatial_clusters(df_balanced, fair_result,
+                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
+                          weight_col=None)
+    plot_cluster_pof([summary])
+
+    plot_execution_times(timing, title="Böhm et al. — Run Time")
+
+    print("Groups pruned to: " + str(size_pruned_to))
 
