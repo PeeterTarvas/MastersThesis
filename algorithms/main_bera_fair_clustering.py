@@ -344,11 +344,6 @@ def fair_clustering(
           f"(n_vars = {len(x) * k_centers:,}, n_constraints ≈ {len(x) + 2*nr_of_groups*k_centers:,}) ...")
     x_lp = solve_fair_lp(x, unfair_centers, weights, group_codes, lower_bounds, upper_bounds)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
-    if x_lp is None:
-        warnings.warn(
-            "[FairClustering] LP infeasible — returning unfair k-median result."
-        )
-        return None
 
     t_start_rounding = time.perf_counter()
     distsances_to_centers = pairwise_l1(x, unfair_centers)
@@ -386,8 +381,8 @@ if __name__ == "__main__":
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
         csv_loader.LOAD_DTYPES,
-        chunk_size=10_000,
-        max_rows=10_000,
+        chunk_size=50_000,
+        max_rows=50_000,
     )
     ##coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
 
@@ -416,7 +411,7 @@ if __name__ == "__main__":
 
     FEATURE_COLS  = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K             = 10
+    K             = 4
     ALPHA         = 0.02
 
     (unfair_centers, unfair_labels, unfair_cost,
@@ -458,13 +453,13 @@ if __name__ == "__main__":
 
     summary = evaluate(fair_result, unfair_result=unfair_result)
 
-    audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
+    #udit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
     plot_execution_times(fair_result, timing, title="Bera et al. — Run Time")
-    plot_spatial_clusters(preprocessed_df, fair_result,
-                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
-                          weight_col=None)
-    plot_cluster_pof(fair_result, [summary])
-    plot_pof_comparison(fair_result, [summary])
-    plot_group_pof(fair_result, [summary])
-    plot_cost_breakdown(fair_result, [summary])
+    #plot_spatial_clusters(preprocessed_df, fair_result,
+    #                      feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
+    #                      weight_col=None)
+    #plot_cluster_pof(fair_result, [summary])
+    #plot_pof_comparison(fair_result, [summary])
+    #plot_group_pof(fair_result, [summary])
+    #plot_cost_breakdown(fair_result, [summary])

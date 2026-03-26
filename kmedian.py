@@ -3,7 +3,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from numba import njit
+from fast_kmedian import fast_kmedian
 
 import csv_loader
 from coreset import compute_fair_coreset
@@ -16,17 +16,7 @@ def l1_distance(a: np.ndarray, b: np.ndarray) -> float:
 def pairwise_l1(X: np.ndarray, centers: np.ndarray) -> np.ndarray:
     """
     Compute pairwise L1 distances between all points in X and all centers.
-
-    Parameters
-    ----------
-    X       : (n, d) array of data points
-    centers : (k, d) array of centers
-
-    Returns
-    -------
-    D : (n, k) distance matrix
     """
-    # Expand dims for broadcasting: (n,1,d) - (1,k,d) -> (n,k,d)
     return np.sum(np.abs(X[:, np.newaxis, :] - centers[np.newaxis, :, :]), axis=2)
 
 
@@ -34,10 +24,6 @@ def assignment_cost(X: np.ndarray, centers: np.ndarray, _weights: Optional[np.nd
     """
     Assign each point to its nearest center and return total L1 cost.
 
-    Returns
-    -------
-    labels : (n,) integer array of center indices
-    cost   : sum_i  w_i * d(x_i, assigned center)
     """
     if _weights is None:
         _weights = np.ones(len(X))
@@ -57,10 +43,6 @@ def kmedian_plus_plus_seed(
     Probabilistic seeding: choose first center uniformly at random, then
     each subsequent center with probability proportional to its L1 distance
     to the nearest already-chosen center.
-
-    Returns
-    -------
-    centers : (k, d) array of initial center coordinates (rows of X)
     """
     if _weights is None:
         _weights = np.ones(len(x))
@@ -95,8 +77,7 @@ def local_search_kmedian(
         max_iter: int = 10,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    Optimized single-swap local search for k-median (Arya et al. 2004 style).
-    Avoids recomputing the full distance matrix on every swap trial.
+    Optimized single-swap local search for k-median
     """
     n, d = X.shape
     centers = init_centers.copy()
@@ -174,32 +155,11 @@ def kmedian(
     Vanilla k-median clustering via k-median++ seeding + single-swap local search.
 
     Runs `n_trials` independent restarts and returns the best result.
-
-    Parameters
-    ----------
-    X           : (n, d) float array of data points
-    k           : number of clusters
-    n_trials    : number of random restarts (best result is returned)
-    max_iter    : maximum local-search iterations per trial
-    random_seed : optional seed for reproducibility
-
-    Returns
-    -------
-    centers : (k, d) array of final center coordinates
-    labels  : (n,) integer array; labels[i] = index of nearest center for point i
-    cost    : total L1 assignment cost (sum of distances to assigned center)
-
-    Notes
-    -----
-    Distance metric: Manhattan (L1), consistent with the formal problem definition
-    in the thesis (metric space with L1 distance).
     """
     X = np.asarray(X, dtype=float)
 
     if _weights is not None:
         _weights = np.asarray(_weights, dtype=float)
-        assert len(_weights) == len(X), "weights must have same length as X"
-        assert np.all(_weights >= 0), "weights must be non-negative"
     else:
         _weights = np.ones(len(X))
 
@@ -209,6 +169,9 @@ def kmedian(
 
     for trial in range(n_trials):
         init_centers = kmedian_plus_plus_seed(X, k, rng, _weights)
+        #centers, labels, cost = fast_kmedian.local_search_kmedian(
+        #    X, k,_weights, init_centers, max_iter
+        #)
         centers, labels, cost = local_search_kmedian(X, k, _weights, init_centers, max_iter)
         if cost < best_cost:
             best_centers = centers
@@ -221,7 +184,7 @@ def kmedian(
 if __name__ == "__main__":
     df: pd.DataFrame = csv_loader.load_csv_chunked("us_census_puma_data.csv",
                                                    csv_loader.LOAD_COLS, csv_loader.LOAD_DTYPES,
-                                                   10_000, 10_000)
+                                                   10_0, 10_0)
 
     coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
 

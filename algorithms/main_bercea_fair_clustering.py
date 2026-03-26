@@ -218,13 +218,6 @@ def fair_clustering(
     x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bound, upper_bound)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
 
-    if x_lp is None:
-        warnings.warn("LP failed — returning unfair k-median assignment.")
-        d = pairwise_l1(x, centers)
-        labels = np.argmin(d, axis=1).astype(np.int32)
-        cost = float(np.dot(weights, d[np.arange(len(x)), labels]))
-        return centers, labels, cost
-
     print(f"LP fractional cost: {float(np.dot(weights, (pairwise_l1(x, centers) * x_lp).sum(axis=1))):,.2f}")
     # --- Step 3: MCF rounding ---
     print("Min-cost flow rounding...")
