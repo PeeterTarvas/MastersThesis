@@ -11,21 +11,12 @@ from scipy.optimize import linprog
 from scipy.sparse import kron, eye, lil_matrix
 import time
 from evaluate import plot_execution_times, make_result, audit_fairness_proportional, evaluate, \
-    plot_spatial_clusters, plot_cluster_pof
+    plot_spatial_clusters, plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown
 from kmedian import kmedian, pairwise_l1
 import csv_loader
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
-    """
-    Map arbitrary group label strings (e.g. "1_Low", "2_High") to
-    contiguous integers 0 … H-1.
-
-    Returns
-    -------
-    codes  : (n,) int32 array — group index per point
-    labels : list of original group names (position = code value)
-    """
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
 
@@ -36,25 +27,6 @@ def proportional_bounds(
     n_groups: int,
     alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Derive per-group lower/upper fairness bounds from proportional
-    representation with ±alpha slack, following the paper's δ-parameterization.
-
-    In the paper (Section 5), they set:
-        β_i = r_i · (1 − δ)   and   α_i = r_i / (1 − δ)
-    where r_i is the fraction of group i in the whole dataset and δ ∈ [0,1].
-
-    Here we use a simpler additive slack:
-        l_h = max(0,   f_h − alpha)
-        u_h = min(1,   f_h + alpha)
-
-    This is equivalent and makes alpha interpretable as the maximum
-    deviation from proportional representation that we tolerate.
-
-    Parameters
-    ----------
-    alpha : allowed deviation from proportional representation (e.g. 0.1 = 10%)
-    """
     total = weights.sum()
     f = np.array([
         weights[group_codes == h].sum() / total
@@ -73,10 +45,6 @@ def solve_fair_lp(
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray,
 ) -> Optional[np.ndarray]:
-    """
-    Returns
-    x_lp : (n, k) fractional assignment matrix, or None if infeasible.
-    """
     dataset_len = len(X)
     nr_of_centers = len(centers)
     nr_of_groups = len(lower_bounds)
@@ -129,17 +97,6 @@ def iterative_rounding(
     x_lp: np.ndarray,
     D: np.ndarray,
 ) -> np.ndarray:
-    """
-    X          : (n, d)  point coordinates
-    centers    : (k, d)  center coordinates
-    weights    : (n,)    point weights  (1.0 for unweighted data)
-    group_codes: (n,)    integer group index per point
-    x_lp       : (n, k)  initial fractional LP solution
-    D          : (n, k)  precomputed L1 distance matrix
-
-    Returns
-    labels : (n,) integer cluster assignment (index into centers)
-    """
     dataset_len, nr_of_centers = x_lp.shape
     max_group_code = int(group_codes.max()) + 1
     DELTA = 1
@@ -297,12 +254,6 @@ def audit_fairness(
     upper_bounds: np.ndarray,
     k: int,
 ):
-    """Print per-cluster fairness vio
-    D = pairwise_l1(X, centers)
-    labels = _mcf_rounding(x_lp, group_codes, weights, D)
-
-    cost = float(np.dot(weights, D[np.arange(len(X)), labels]))
-    print(f"  Integral cost after rounding: {cost:,.2f}")lations."""
     violations = 0
     for j in range(k):
         at_j = labels == j
@@ -337,28 +288,6 @@ def fair_clustering(
 ) -> tuple[
          ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
              Any, dtype[Any]] | Any, ndarray, list, ndarray, ndarray] | None:
-    """
-
-    df                  : DataFrame with feature and group columns.
-    feature_cols        : Column names used as spatial coordinates for clustering.
-    protected_group_col : Column name containing group labels (any hashable type).
-    k                   : Number of clusters.
-    alpha               : Fairness slack — maximum allowed deviation from proportional
-                          group representation per cluster.  Higher = more relaxed.
-    weight_col          : Column name for point weights, or None for uniform weights.
-    lower_bounds        : Explicit per-group lower bounds (length H). If None,
-                          derived automatically from alpha and group frequencies.
-    upper_bounds        : Explicit per-group upper bounds (length H). If None,
-                          derived automatically from alpha and group frequencies.
-    kmedian_trials      : Number of restarts for the vanilla k-median seeding.
-    kmedian_max_iter    : Max local-search iterations per trial.
-    random_seed         : RNG seed for reproducibility.
-
-    Returns
-    centers : (k, d) final center coordinates (in the scaled feature space)
-    labels  : (n,)   integer cluster assignment per row of df
-    cost    : total weighted L1 assignment cost
-    """
     timing = {}
     t_start = time.perf_counter()
 
@@ -503,7 +432,7 @@ if __name__ == "__main__":
     )
 
     fair_result = make_result(
-        algorithm="Bera et al.",
+        algorithm="bera",
         centers=unfair_centers,
         labels=fair_labels,
         fair_cost=fair_cost,
@@ -516,7 +445,7 @@ if __name__ == "__main__":
     )
 
     unfair_result = make_result(
-        algorithm="Unfair k-Median (Bera baseline)",
+        algorithm="kmedian-unfair-baseline",
         centers=unfair_centers,
         labels=unfair_labels,
         fair_cost=unfair_cost,
@@ -531,8 +460,11 @@ if __name__ == "__main__":
 
     audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
-    plot_execution_times(timing, title="Bera et al. — Run Time")
+    plot_execution_times(fair_result, timing, title="Bera et al. — Run Time")
     plot_spatial_clusters(preprocessed_df, fair_result,
                           feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
                           weight_col=None)
-    plot_cluster_pof([summary])
+    plot_cluster_pof(fair_result, [summary])
+    plot_pof_comparison(fair_result, [summary])
+    plot_group_pof(fair_result, [summary])
+    plot_cost_breakdown(fair_result, [summary])

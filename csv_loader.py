@@ -5,23 +5,26 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence
 
+from sklearn.preprocessing import MinMaxScaler
+
 LOAD_COLS = ["Longitude", "Latitude", "PINCP", "AGEP", "SEX", "RAC1P"]
 
 LOAD_DTYPES = {
     "Longitude": "float32",
-    "Latitude":  "float32",
-    "PINCP":     "float32",
-    "AGEP":      "Int16",
-    "SEX":       "Int8",
-    "RAC1P":     "Int16",
+    "Latitude": "float32",
+    "PINCP": "float32",
+    "AGEP": "Int16",
+    "SEX": "Int8",
+    "RAC1P": "Int16",
 }
 
+
 def load_csv_chunked(
-    csv_path: str,
-    cols: Sequence[str] = LOAD_COLS,
-    dtypes: dict = LOAD_DTYPES,
-    chunk_size: int = 200_000,
-    max_rows: Optional[int] = None,
+        csv_path: str,
+        cols: Sequence[str] = LOAD_COLS,
+        dtypes: dict = LOAD_DTYPES,
+        chunk_size: int = 200_000,
+        max_rows: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Load CSV in chunks, keeping memory usage low.
@@ -52,7 +55,7 @@ def load_csv_chunked(
         usecols=cols,
         dtype=dtypes,
         chunksize=chunk_size,
-        engine='c'         # faster than pyarrow for chunked reads
+        engine='c'  # faster than pyarrow for chunked reads
     )
 
     for i, chunk in enumerate(reader):
@@ -70,12 +73,12 @@ def load_csv_chunked(
         total_loaded += len(chunk)
 
         elapsed = time.time() - t0
-        print(f"  Chunk {i+1}: loaded {total_loaded:,} rows ({elapsed:.1f}s)", end="\r")
+        print(f"  Chunk {i + 1}: loaded {total_loaded:,} rows ({elapsed:.1f}s)", end="\r")
 
         if max_rows is not None and total_loaded >= max_rows:
             break
 
-    print(f"\n  Done: {total_loaded:,} clean rows loaded in {time.time()-t0:.1f}s")
+    print(f"\n  Done: {total_loaded:,} clean rows loaded in {time.time() - t0:.1f}s")
 
     df = pd.concat(chunks, ignore_index=True)
     del chunks
@@ -85,6 +88,7 @@ def load_csv_chunked(
         df = df.iloc[:max_rows].copy()
 
     return df
+
 
 def preprocess_dataset(df: pd.DataFrame):
     df_core = df.copy()
@@ -98,10 +102,10 @@ def preprocess_dataset(df: pd.DataFrame):
 
     print("Generating unique 'groups' for intersectional fairness...")
     df_core['GROUP_ID'] = (
-            ##df_core['RAC1P'].astype(str) + "_"# +
-            ##df_core['SEX'].astype(str) + "_" +
-            df_core['AGE_BIN'].astype(str) + "_"# +
-            ##df_core['INC_BIN'].astype(str)
+        ##df_core['RAC1P'].astype(str) + "_"# +
+        ##df_core['SEX'].astype(str) + "_" +
+            df_core['AGE_BIN'].astype(str) + "_"  # +
+        ##df_core['INC_BIN'].astype(str)
     )
 
     print("3. Extracting and scaling spatial coordinates...")

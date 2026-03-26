@@ -2,18 +2,14 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
+from csv_loader import preprocess_dataset
+
+
 def compute_fair_coreset(
         df: pd.DataFrame,
         n_locations: int = 1000,
         random_seed: int = 42
 ) -> pd.DataFrame:
-    """
-    Computes a Fair Coreset by moving points to common spatial locations
-    and consolidating weights by demographic 'color'.
-
-
-    """
-
     if n_locations >= len(df):
         n_locations = len(df)
 
@@ -21,8 +17,7 @@ def compute_fair_coreset(
     df_core = preprocess_dataset(df)
 
     print(f"Generating {n_locations} common spatial locations (D1 Sampling)...")
-    # We use uniform random sampling for speed on 3M rows to establish the base locations.
-    # For a stricter coreset, you can plug in your kmedian_plus_plus_seed here.
+    # use uniform random sampling
     rng = np.random.default_rng(random_seed)
     location_indices = rng.choice(len(df_core), size=n_locations, replace=False)
     scaler = MinMaxScaler()
@@ -31,17 +26,6 @@ def compute_fair_coreset(
     orig_lats = df_core['Latitude'].values[location_indices]
     orig_lons = df_core['Longitude'].values[location_indices]
 
-    # --- Step 5: Assign every point to its nearest reference location (L1) -----
-    # Memory note: naively broadcasting (n_points, n_locations, 2) at once
-    # costs n_points × n_locations × 2 × 4 bytes.  With 100k points and 30k
-    # locations that is ~22 GB — way over budget.
-    #
-    # Fix: tile both axes.  For each points-tile we iterate over location-tiles,
-    # tracking only the running best (min_dist, argmin) — O(points_tile ×
-    # loc_tile × 2) peak, which we keep to ~256 MB by choosing tile sizes below.
-    #
-    # tile_points × tile_locs × 2 × 4 bytes ≤ target_bytes
-    # With tile_points=5_000 and tile_locs=5_000: 5k×5k×2×4 = 200 MB  ✓
     tile_points = 5_000
     tile_locs   = 5_000
     n_pts = len(spatial_coords)
@@ -59,9 +43,8 @@ def compute_fair_coreset(
             l_end  = min(l_start + tile_locs, len(centers))
             locs   = centers[l_start:l_end]             # (tl, 2)
 
-            # (tp, tl) — peak allocation: tp × tl × 4 bytes per dim, summed over 2 dims
-            d = (np.abs(pts[:, 0:1] - locs[:, 0])      # lat component  (tp, tl)
-               + np.abs(pts[:, 1:2] - locs[:, 1]))      # lon component  (tp, tl)
+            d = (np.abs(pts[:, 0:1] - locs[:, 0])
+               + np.abs(pts[:, 1:2] - locs[:, 1]))
 
             loc_best_dist  = d.min(axis=1)              # (tp,)
             loc_best_label = d.argmin(axis=1) + l_start # global location index
@@ -78,7 +61,6 @@ def compute_fair_coreset(
     df_core['Assigned_Center_Idx'] = point_labels
 
     print("Consolidating points by Center and Group to generate weights...")
-    # This matches the paper: "we put p into S' with color i and weight n_{p,i}"
     coreset = df_core.groupby(['Assigned_Center_Idx', 'GROUP_ID']).size().reset_index(name='Weight')
     center_meta = pd.DataFrame({
         'Assigned_Center_Idx': np.arange(n_locations),

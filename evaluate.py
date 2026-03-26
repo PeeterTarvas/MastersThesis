@@ -8,20 +8,22 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from pathlib import Path
+
 
 @dataclass
 class ClusteringResult:
     """Holds everything needed for evaluation and visualisation."""
-    algorithm:    str
-    centers:      np.ndarray
-    labels:       np.ndarray
-    fair_cost:    float
-    unfair_cost:  float
-    X:            np.ndarray   # (n, d) — point coordinates (no coreset assumed)
-    weights:      np.ndarray
-    group_codes:  np.ndarray
-    group_names:  list
-    timing:       dict = field(default_factory=dict)
+    algorithm: str
+    centers: np.ndarray
+    labels: np.ndarray
+    fair_cost: float
+    unfair_cost: float
+    X: np.ndarray  # (n, d) — point coordinates (no coreset assumed)
+    weights: np.ndarray
+    group_codes: np.ndarray
+    group_names: list
+    timing: dict = field(default_factory=dict)
 
     @property
     def k(self) -> int:
@@ -37,16 +39,16 @@ class ClusteringResult:
 
 
 def make_result(
-    algorithm:   str,
-    centers:     np.ndarray,
-    labels:      np.ndarray,
-    fair_cost:   float,
-    unfair_cost: float,
-    X:           np.ndarray,
-    weights:     np.ndarray,
-    group_codes: np.ndarray,
-    group_names: list,
-    timing:      Optional[dict] = None,
+        algorithm: str,
+        centers: np.ndarray,
+        labels: np.ndarray,
+        fair_cost: float,
+        unfair_cost: float,
+        X: np.ndarray,
+        weights: np.ndarray,
+        group_codes: np.ndarray,
+        group_names: list,
+        timing: Optional[dict] = None,
 ) -> ClusteringResult:
     return ClusteringResult(
         algorithm=algorithm,
@@ -81,8 +83,8 @@ def compute_group_costs(result: ClusteringResult) -> dict:
     -------
     dict  group_name (str) → weighted cost (float)
     """
-    X   = result.X
-    n   = len(X)
+    X = result.X
+    n = len(X)
     weighted_dists = np.zeros(n)
 
     for j in range(result.k):
@@ -98,8 +100,8 @@ def compute_group_costs(result: ClusteringResult) -> dict:
 
 
 def compute_gpof(
-    fair_group_costs:   dict,
-    unfair_group_costs: dict,
+        fair_group_costs: dict,
+        unfair_group_costs: dict,
 ) -> dict:
     """
     Group-level Price of Fairness.
@@ -145,7 +147,7 @@ def _match_clusters(fair_result: ClusteringResult, unfair_result: ClusteringResu
     Returns dict  fair_cluster_id → unfair_cluster_id.
 
     This is needed because the two runs may number their clusters differently.
-    We use a simple greedy nearest-centre matching — good enough for PoF
+    Simple greedy nearest-centre matching — good enough for PoF
     comparisons where k is small.
     """
     from scipy.spatial.distance import cdist
@@ -156,8 +158,8 @@ def _match_clusters(fair_result: ClusteringResult, unfair_result: ClusteringResu
 
 
 def compute_cluster_pof(
-    fair_result:   ClusteringResult,
-    unfair_result: ClusteringResult,
+        fair_result: ClusteringResult,
+        unfair_result: ClusteringResult,
 ) -> dict:
     """
     Per-cluster Price of Fairness.
@@ -169,9 +171,9 @@ def compute_cluster_pof(
     -------
     dict  cluster_id (int) → C-PoF (float)
     """
-    fair_costs   = compute_cluster_costs(fair_result)
+    fair_costs = compute_cluster_costs(fair_result)
     unfair_costs = compute_cluster_costs(unfair_result)
-    matching     = _match_clusters(fair_result, unfair_result)
+    matching = _match_clusters(fair_result, unfair_result)
 
     cpof = {}
     for j, uc_j in matching.items():
@@ -181,12 +183,11 @@ def compute_cluster_pof(
     return cpof
 
 
-
 def audit_fairness_proportional(
-    result:       ClusteringResult,
-    lower_bounds: np.ndarray,
-    upper_bounds: np.ndarray,
-    verbose:      bool = True,
+        result: ClusteringResult,
+        lower_bounds: np.ndarray,
+        upper_bounds: np.ndarray,
+        verbose: bool = True,
 ) -> int:
     """
     Per-(cluster, group) proportional fairness check for Bera / Essential k-Median.
@@ -197,25 +198,25 @@ def audit_fairness_proportional(
     Returns the total number of violations.
     """
     violations = 0
-    tol        = 1e-4
+    tol = 1e-4
 
     if verbose:
         print(f"\n[Fairness Audit — Proportional] '{result.algorithm}'")
 
     for j in range(result.k):
-        at_j    = result.labels == j
+        at_j = result.labels == j
         total_j = result.weights[at_j].sum()
         if total_j == 0:
             continue
         for h, name in enumerate(result.group_names):
             mass_h = result.weights[at_j & (result.group_codes == h)].sum()
-            frac   = mass_h / total_j
+            frac = mass_h / total_j
             lo, hi = lower_bounds[h], upper_bounds[h]
             if frac < lo - tol or frac > hi + tol:
                 violations += 1
                 if verbose:
                     print(f"  ⚠ Cluster {j:2d}  Group '{name}': "
-                          f"{frac*100:.1f}% outside [{lo*100:.1f}%, {hi*100:.1f}%]")
+                          f"{frac * 100:.1f}% outside [{lo * 100:.1f}%, {hi * 100:.1f}%]")
 
     if verbose:
         if violations == 0:
@@ -227,7 +228,7 @@ def audit_fairness_proportional(
 
 
 def audit_fairness_exact_balance(
-    result:  ClusteringResult,
+        result: ClusteringResult,
 ) -> int:
     """
     Exact equal-group-size balance check for Böhm et al.
@@ -235,25 +236,25 @@ def audit_fairness_exact_balance(
     Every cluster must contain exactly 1/H of each group (count-based).
     Returns the total number of (cluster, group) violations.
     """
-    H          = result.n_groups
+    H = result.n_groups
     violations = 0
-    tol        = 1e-4
-    expected   = 1.0 / H
+    tol = 1e-4
+    expected = 1.0 / H
 
     print(f"\n[Fairness Audit — Exact Balance] '{result.algorithm}'")
 
     for j in range(result.k):
-        at_j= result.labels == j
+        at_j = result.labels == j
         total_j = int(at_j.sum())
         if total_j == 0:
             continue
         for h, name in enumerate(result.group_names):
             count_h = int((at_j & (result.group_codes == h)).sum())
-            frac    = count_h / total_j
+            frac = count_h / total_j
             if abs(frac - expected) > tol:
                 violations += 1
                 print(f"  ⚠ Cluster {j:2d}  Group '{name}': "
-                      f"{count_h} pts ({frac*100:.1f}%) ≠ {expected*100:.1f}%")
+                      f"{count_h} pts ({frac * 100:.1f}%) ≠ {expected * 100:.1f}%")
 
     if violations == 0:
         print("  ✓ All clusters are perfectly balanced across groups.")
@@ -261,9 +262,11 @@ def audit_fairness_exact_balance(
         print(f"  → {violations} uneven group distribution(s).")
     return violations
 
+
 def evaluate(
-    result:             ClusteringResult,
-    unfair_result:      Optional[ClusteringResult] = None
+        result: ClusteringResult,
+        unfair_result: Optional[ClusteringResult] = None,
+        save_csv: bool = True
 ) -> dict:
     """
     Compute all thesis metrics for one algorithm result.
@@ -281,47 +284,70 @@ def evaluate(
         Algorithm, Total Cost (Fair), Total Cost (Unfair), PoF,
         Max G-PoF, Avg G-PoF, Group_Costs, Group_PoFs
     """
-    fair_group_costs   = compute_group_costs(result)
+    fair_group_costs = compute_group_costs(result)
     fair_cluster_costs = compute_cluster_costs(result)
-    total_fair         = sum(fair_group_costs.values())
+    total_fair = sum(fair_group_costs.values())
 
-    gpof  = {}
-    cpof  = {}
+    gpof = {}
+    cpof = {}
     unfair_cluster_costs = {}
     unfair_group_costs = {}
     if unfair_result is not None:
-        unfair_group_costs   = compute_group_costs(unfair_result)
+        unfair_group_costs = compute_group_costs(unfair_result)
         unfair_cluster_costs = compute_cluster_costs(unfair_result)
         gpof = compute_gpof(fair_group_costs, unfair_group_costs)
         cpof = compute_cluster_pof(result, unfair_result)
     valid_gpof = [v for v in gpof.values() if v != float('inf')] if gpof else []
     valid_cpof = [v for v in cpof.values() if v != float('inf')] if cpof else []
     summary = {
-        "Algorithm":             result.algorithm,
-        "Total Cost (Fair)":     total_fair,
-        "Total Cost (Unfair)":   result.unfair_cost,
-        "PoF":                   compute_pof(total_fair, result.unfair_cost),
-        "Max G-PoF":             max(valid_gpof),
-        "Avg G-PoF":             float(np.mean(valid_gpof)),
-        "Max C-PoF":             max(valid_cpof),
-        "Avg C-PoF":             float(np.mean(valid_cpof)),
-        "Group_Costs (Fair)":    fair_group_costs,
-        "Group_Costs (Unfair)":  unfair_group_costs,
-        "Group_PoFs":            gpof,
-        "Cluster_Costs (Fair)":  fair_cluster_costs,
-        "Cluster_Costs (Unfair)":unfair_cluster_costs,
-        "Cluster_PoFs":          cpof,
+        "Algorithm": result.algorithm,
+        "Total Cost (Fair)": total_fair,
+        "Total Cost (Unfair)": result.unfair_cost,
+        "PoF": compute_pof(total_fair, result.unfair_cost),
+        "Max G-PoF": max(valid_gpof),
+        "Avg G-PoF": float(np.mean(valid_gpof)),
+        "Max C-PoF": max(valid_cpof),
+        "Avg C-PoF": float(np.mean(valid_cpof)),
+        "Group_Costs (Fair)": fair_group_costs,
+        "Group_Costs (Unfair)": unfair_group_costs,
+        "Group_PoFs": gpof,
+        "Cluster_Costs (Fair)": fair_cluster_costs,
+        "Cluster_Costs (Unfair)": unfair_cluster_costs,
+        "Cluster_PoFs": cpof,
     }
 
     _print_summary(summary)
+
+    if save_csv:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        flat_summary = {
+            "Algorithm": summary["Algorithm"],
+            "Total Cost (Fair)": summary["Total Cost (Fair)"],
+            "Total Cost (Unfair)": summary["Total Cost (Unfair)"],
+            "PoF": summary["PoF"],
+            "Max G-PoF": summary["Max G-PoF"],
+            "Avg G-PoF": summary["Avg G-PoF"],
+            "Max C-PoF": summary["Max C-PoF"],
+            "Avg C-PoF": summary["Avg C-PoF"],
+        }
+
+        for g, val in summary["Group_PoFs"].items():
+            flat_summary[f"G-PoF_{g}"] = val
+            flat_summary[f"Fair_Cost_{g}"] = summary["Group_Costs (Fair)"].get(g, None)
+            flat_summary[f"Unfair_Cost_{g}"] = summary["Group_Costs (Unfair)"].get(g, None)
+
+        df = pd.DataFrame([flat_summary])
+        df.to_csv(save_dir / "evaluation_summary.csv", index=False)
 
     return summary
 
 
 def _print_summary(s: dict) -> None:
-    print(f"\n{'='*55}")
+    print(f"\n{'=' * 55}")
     print(f"  Evaluation — {s['Algorithm']}")
-    print(f"{'='*55}")
+    print(f"{'=' * 55}")
     print(f"  Fair cost    : {s['Total Cost (Fair)']:>15,.2f}")
     print(f"  Unfair cost  : {s['Total Cost (Unfair)']:>15,.2f}")
     print(f"  PoF          : {s['PoF']:>15.4f}  (1.0 = fairness is free)")
@@ -341,12 +367,12 @@ def _print_summary(s: dict) -> None:
         print(f"    Max C-PoF  : {s['Max C-PoF']:>10.4f}")
         print(f"    Avg C-PoF  : {s['Avg C-PoF']:>10.4f}")
         for j, v in s["Cluster_PoFs"].items():
-            fair_c   = s["Cluster_Costs (Fair)"].get(j, 0.0)
+            fair_c = s["Cluster_Costs (Fair)"].get(j, 0.0)
             unfair_c = s["Cluster_Costs (Unfair)"].get(j, 0.0)
             print(f"    Cluster {j:3d}  : PoF={v:.4f}  "
                   f"fair={fair_c:,.1f}  unfair={unfair_c:,.1f}")
 
-    print(f"{'='*55}\n")
+    print(f"{'=' * 55}\n")
 
 
 def compare(summaries: list[dict]) -> pd.DataFrame:
@@ -361,17 +387,16 @@ def compare(summaries: list[dict]) -> pd.DataFrame:
     rows = []
     for s in summaries:
         rows.append({
-            "Algorithm":   s["Algorithm"],
-            "Fair Cost":   s["Total Cost (Fair)"],
+            "Algorithm": s["Algorithm"],
+            "Fair Cost": s["Total Cost (Fair)"],
             "Unfair Cost": s["Total Cost (Unfair)"],
-            "PoF":         s["PoF"],
-            "Max G-PoF":   s.get("Max G-PoF"),
-            "Avg G-PoF":   s.get("Avg G-PoF"),
-            "Max C-PoF":   s.get("Max C-PoF"),
-            "Avg C-PoF":   s.get("Avg C-PoF"),
+            "PoF": s["PoF"],
+            "Max G-PoF": s.get("Max G-PoF"),
+            "Avg G-PoF": s.get("Avg G-PoF"),
+            "Max C-PoF": s.get("Max C-PoF"),
+            "Avg C-PoF": s.get("Avg C-PoF"),
         })
     return pd.DataFrame(rows)
-
 
 
 _PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52",
@@ -379,14 +404,21 @@ _PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52",
 
 
 def plot_execution_times(
-    timing:    dict,
-    title:     str = "Execution Time by Step",
-    save_path: Optional[str] = None,
+        result: ClusteringResult,
+        timing: dict,
+        title: str = "Execution Time by Step",
+        save_path: Optional[str] = None
 ) -> None:
     """Bar chart of per-step times."""
-    steps  = list(timing.keys())
-    times  = list(timing.values())
-    max_t  = max(times) if times else 1.0
+
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "execution_times.png")
+
+    steps = list(timing.keys())
+    times = list(timing.values())
+    max_t = max(times) if times else 1.0
     colors = (_PALETTE * ((len(steps) // len(_PALETTE)) + 1))[:len(steps)]
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -409,13 +441,18 @@ def plot_execution_times(
 
 
 def plot_spatial_clusters(
-    df:           pd.DataFrame,
-    result:       ClusteringResult,
-    feature_cols: list[str],
-    group_col:    str,
-    weight_col:   Optional[str] = "Weight",
-    save_path:    Optional[str] = None,
+        df: pd.DataFrame,
+        result: ClusteringResult,
+        feature_cols: list[str],
+        group_col: str,
+        weight_col: Optional[str] = "Weight",
+        save_path: Optional[str] = None,
 ) -> None:
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "spatial")
+
     lat_col, lon_col = feature_cols
     df_vis = df.copy()
     df_vis["_Cluster"] = result.labels
@@ -486,21 +523,29 @@ def plot_spatial_clusters(
         fig3.savefig(f"{save_path}_composition.png", dpi=150, bbox_inches="tight")
     plt.show()
 
+
 def plot_pof_comparison(
-    summaries: list[dict],
-    save_path: Optional[str] = None,
+        result: ClusteringResult,
+        summaries: list[dict],
+        save_path: Optional[str] = None,
 ) -> None:
     """
     Side-by-side PoF and Avg G-PoF bar chart for all algorithms.
     The dashed red line marks the unfair baseline (PoF = 1).
     """
-    df    = compare(summaries)
-    x     = np.arange(len(df))
+
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "pof_comparison.png")
+
+    df = compare(summaries)
+    x = np.arange(len(df))
     width = 0.35
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.bar(x - width / 2, df["PoF"],       width, label="PoF (overall)", color=_PALETTE[0])
-    ax.bar(x + width / 2, df["Avg G-PoF"], width, label="Avg G-PoF",     color=_PALETTE[1])
+    ax.bar(x - width / 2, df["PoF"], width, label="PoF (overall)", color=_PALETTE[0])
+    ax.bar(x + width / 2, df["Avg G-PoF"], width, label="Avg G-PoF", color=_PALETTE[1])
     ax.axhline(1.0, color="red", linestyle="--", linewidth=1.2, label="Unfair baseline")
 
     ax.set_xticks(x)
@@ -517,13 +562,18 @@ def plot_pof_comparison(
 
 
 def plot_group_pof(
-    summaries: list[dict],
-    save_path: Optional[str] = None,
+        result: ClusteringResult,
+        summaries: list[dict],
+        save_path: Optional[str] = None,
 ) -> None:
     """
     Grouped bar chart of per-group G-PoF for every algorithm.
     Highlights which demographic group bears the fairness cost.
     """
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "group_pof.png")
     all_groups: list = []
     for s in summaries:
         for g in s.get("Group_PoFs", {}):
@@ -534,13 +584,13 @@ def plot_group_pof(
         print("[plot_group_pof] No group-level G-PoF data — pass unfair_result to evaluate().")
         return
 
-    n_algs   = len(summaries)
-    x        = np.arange(len(all_groups))
-    width    = 0.8 / n_algs
+    n_algs = len(summaries)
+    x = np.arange(len(all_groups))
+    width = 0.8 / n_algs
 
     fig, ax = plt.subplots(figsize=(max(8, len(all_groups) * 1.5), 5))
     for i, s in enumerate(summaries):
-        vals   = [s["Group_PoFs"].get(g, 0.0) for g in all_groups]
+        vals = [s["Group_PoFs"].get(g, 0.0) for g in all_groups]
         offset = (i - n_algs / 2 + 0.5) * width
         ax.bar(x + offset, vals, width, label=s["Algorithm"],
                color=_PALETTE[i % len(_PALETTE)])
@@ -559,8 +609,9 @@ def plot_group_pof(
 
 
 def plot_cluster_pof(
-    summaries: list[dict],
-    save_path: Optional[str] = None,
+        result: ClusteringResult,
+        summaries: list[dict],
+        save_path: Optional[str] = None,
 ) -> None:
     """
     Per-cluster C-PoF bar chart for each algorithm, with:
@@ -572,6 +623,10 @@ def plot_cluster_pof(
     Only shown for summaries that have Cluster_PoFs data (i.e. unfair_result
     was passed to evaluate()).
     """
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "cluster_pof.png")
     summaries_with_data = [s for s in summaries if s.get("Cluster_PoFs")]
     if not summaries_with_data:
         print("[plot_cluster_pof] No cluster-level PoF data — "
@@ -579,18 +634,18 @@ def plot_cluster_pof(
         return
 
     cluster_ids = sorted(summaries_with_data[0]["Cluster_PoFs"].keys())
-    n_clusters  = len(cluster_ids)
-    n_algs      = len(summaries_with_data)
-    width       = 0.8 / n_algs
-    x           = np.arange(n_clusters)
+    n_clusters = len(cluster_ids)
+    n_algs = len(summaries_with_data)
+    width = 0.8 / n_algs
+    x = np.arange(n_clusters)
 
     fig, ax = plt.subplots(figsize=(max(10, n_clusters * 0.6), 5))
 
     for i, s in enumerate(summaries_with_data):
-        cpof   = s["Cluster_PoFs"]
+        cpof = s["Cluster_PoFs"]
         fc_map = s["Cluster_Costs (Fair)"]
         uc_map = s["Cluster_Costs (Unfair)"]
-        vals   = [cpof.get(j, 0.0) for j in cluster_ids]
+        vals = [cpof.get(j, 0.0) for j in cluster_ids]
         offset = (i - n_algs / 2 + 0.5) * width
 
         bars = ax.bar(x + offset, vals, width,
@@ -624,29 +679,34 @@ def plot_cluster_pof(
 
 
 def plot_cost_breakdown(
-    summaries: list[dict],
-    save_path: Optional[str] = None,
+        result: ClusteringResult,
+        summaries: list[dict],
+        save_path: Optional[str] = None,
 ) -> None:
     """
     Stacked bar of per-group costs normalised to the unfair total cost,
     so the y-axis reads directly as contribution to the PoF ratio.
     """
+    if not save_path:
+        save_dir = Path("results") / result.algorithm
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = str(save_dir / "cost_breakdown.png")
     all_groups: list = []
     for s in summaries:
         for g in s.get("Group_Costs (Fair)", {}):
             if g not in all_groups:
                 all_groups.append(g)
 
-    fig, ax  = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 5))
     bar_width = 0.1
-    x         = np.arange(len(summaries))
-    bottoms   = np.zeros(len(summaries))
+    x = np.arange(len(summaries))
+    bottoms = np.zeros(len(summaries))
 
     for gi, g in enumerate(all_groups):
         vals = []
         for s in summaries:
-            gc  = s.get("Group_Costs (Fair)", {})
-            uc  = s["Total Cost (Unfair)"]
+            gc = s.get("Group_Costs (Fair)", {})
+            uc = s["Total Cost (Unfair)"]
             vals.append(gc.get(g, 0.0) / uc if uc else 0.0)
         ax.bar(x, vals, bar_width, bottom=bottoms, label=str(g),
                color=_PALETTE[gi % len(_PALETTE)])

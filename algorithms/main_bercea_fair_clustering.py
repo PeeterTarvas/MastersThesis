@@ -18,7 +18,6 @@ from kmedian import kmedian, pairwise_l1
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
-    """Map arbitrary group labels -> contiguous integers 0..H-1."""
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
 
@@ -29,15 +28,6 @@ def proportional_bounds(
         n_groups: int,
         alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Derive per-group lower / upper bounds from proportional representation
-    with ±alpha slack metric.
-
-        l_h = max(0, f_h - alpha)
-        u_h = min(1, f_h + alpha)
-
-    where f_h = (total weight of color h) / (total weight).
-    """
     total = weights.sum()
     f = np.array([weights[group_codes == h].sum() / total for h in range(n_groups)])
     lower_bound = np.maximum(0.0, f - alpha)
@@ -53,30 +43,6 @@ def solve_fair_lp(
         lower_bound: np.ndarray,
         upper_bound: np.ndarray,
 ) -> Optional[np.ndarray]:
-    """
-    Solve the Fair LP relaxation for *fixed* centers.
-
-    Variables
-    ---------
-    x_{ij} ∈ [0, 1]  — fractional assignment of point i to center j
-    Laid out as a flat vector of length n*k (row-major: x[i*k + j]).
-
-    Objective (Eq. 9)
-    -----------------
-    min  Σ_{i,j}  w_i · d(i,j) · x_{ij}
-
-    Constraints
-    -----------
-    (a) Σ_j x_{ij} = 1   ∀i                          (each point fully assigned)
-    (b) l_h · Σ_i x_{ij} ≤ Σ_{i∈Col_h} x_{ij}  ∀j,h  (lower fairness)
-    (c) Σ_{i∈Col_h} x_{ij} ≤ u_h · Σ_i x_{ij}  ∀j,h  (upper fairness)
-
-    Uses sparse matrices to stay memory-feasible for n up to ~50k.
-
-    Returns
-    -------
-    x : (n, k) fractional assignment matrix, or None if infeasible.
-    """
     total_points, d = x.shape
     nr_of_centers = len(centers)
     n_vars = total_points * nr_of_centers
@@ -200,27 +166,6 @@ def fair_clustering(
 ) -> tuple[ndarray, Any, float] | tuple[
     ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
         Any, dtype[Any]] | Any, ndarray, list, Any, Any]:
-    """
-    Parameters
-    ----------
-    df           : DataFrame. Works with raw points OR a coreset.
-    feature_cols : columns used as clustering coordinates (e.g. ['Lat_Scaled','Lon_Scaled'])
-    protected_group_col    : column with protected group labels (string or int)
-    k_cluster            : number of clusters
-    alpha        : proportional-representation slack (ignored if l_h/u_h provided)
-    weight_col   : column of point weights.
-                   Pass None (or a missing column) to use uniform weights of 1.
-    lower_bound, upper_bound     : explicit per-group bounds (length H arrays). If None, derived
-                   from alpha and proportional representation.
-    kmedian_*    : passed through to kmedian()
-
-    Returns
-    -------
-    centers : (k, d) final center coordinates
-    labels  : (n,) integer cluster assignment per row of df
-    cost    : total weighted L1 assignment cost
-    """
-
     timing = {}
 
     t_start = time.perf_counter()
@@ -323,7 +268,7 @@ if __name__ == "__main__":
     )
 
     fair_result = make_result(
-        algorithm="Essential k-Median",
+        algorithm="bercea",
         centers=centers,
         labels=labels,
         fair_cost=cost,
@@ -336,7 +281,7 @@ if __name__ == "__main__":
     )
 
     unfair_result = make_result(
-        algorithm="Unfair k-Median (Essential baseline)",
+        algorithm="kmedian-unfair-baseline",
         centers=centers,
         labels=unfair_labels,
         fair_cost=unfair_cost,
@@ -351,11 +296,11 @@ if __name__ == "__main__":
 
     audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
-    plot_execution_times(timing, title="Essential k-Median — Run Time")
+    plot_execution_times(fair_result ,timing, title="Essential k-Median — Run Time")
     plot_spatial_clusters(df, fair_result,
                           feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
                           weight_col=None)
-    plot_cluster_pof([summary])
-    plot_pof_comparison([summary])
-    plot_group_pof([summary])
-    plot_cost_breakdown([summary])
+    plot_cluster_pof(fair_result, [summary])
+    plot_pof_comparison(fair_result, [summary])
+    plot_group_pof(fair_result, [summary])
+    plot_cost_breakdown(fair_result, [summary])

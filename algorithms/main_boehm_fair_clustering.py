@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Optional, Any
 
-
 import pandas as pd
 from numpy import ndarray
 from scipy.optimize import linear_sum_assignment
@@ -19,14 +18,6 @@ from evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_p
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
-    """
-    Map group label strings to contiguous integers 0…L-1.
-
-    Returns
-    -------
-    codes  : (n,) int32 array — group index per point
-    names  : list of original group names (position = code value)
-    """
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
 
@@ -103,11 +94,6 @@ def evaluate_fairness(
         group_names: list,
         k: int,
 ):
-    """
-    Audit per-(cluster, group) fairness.
-    For Böhm's algorithm, every cluster MUST have an exactly equal
-    number of points from each protected group.
-    """
     print(f"\n[Evaluation] Fairness check (Böhm Exact Matching):")
     H = len(group_names)
 
@@ -172,8 +158,8 @@ def fair_clustering(
 
     t0 = time.perf_counter()
     fair_centers, fair_labels, fair_cost = boehm_fair_clustering(x, group_codes,
-                                                                  k_centers=k, n_trials=kmedian_trials,
-                                                                  max_iter=kmedian_max_iter)
+                                                                 k_centers=k, n_trials=kmedian_trials,
+                                                                 max_iter=kmedian_max_iter)
     timing["Böhm Fair Clustering"] = time.perf_counter() - t0
 
     evaluate_fairness(fair_labels, group_codes, group_names, k)
@@ -191,7 +177,6 @@ def fair_clustering(
             group_names,
             df_balanced
             )
-
 
 
 if __name__ == "__main__":
@@ -223,7 +208,7 @@ if __name__ == "__main__":
     weights = np.ones(len(x), dtype=np.float64)
 
     fair_result = make_result(
-        algorithm="Böhm et al.",
+        algorithm="boehm",
         centers=fair_centers,
         labels=fair_labels,
         fair_cost=fair_cost,
@@ -235,7 +220,7 @@ if __name__ == "__main__":
     )
 
     unfair_result = make_result(
-        algorithm="Unfair k-Median (Böhm baseline)",
+        algorithm="kmedian-unfair-baseline",
         centers=unfair_centers,
         labels=unfair_labels,
         fair_cost=unfair_cost,
@@ -250,11 +235,10 @@ if __name__ == "__main__":
 
     audit_fairness_exact_balance(fair_result)
 
-    plot_execution_times(timing, title="Essential k-Median — Run Time")
+    plot_execution_times(fair_result, timing, title="Essential k-Median — Run Time")
     plot_spatial_clusters(df_balanced, fair_result, feature_cols=FEATURE_COLS, group_col=PROTECTED_COL, weight_col=None)
-    plot_cluster_pof([summary])
-    plot_pof_comparison([summary])
-    plot_group_pof([summary])
-    plot_cost_breakdown([summary])
+    plot_cluster_pof(fair_result, [summary])
+    plot_pof_comparison(fair_result, [summary])
+    plot_group_pof(fair_result, [summary])
+    plot_cost_breakdown(fair_result, [summary])
     print("Groups pruned to: " + str(size_pruned_to))
-
