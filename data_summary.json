@@ -14,6 +14,24 @@
     },
     "AGEP_min": 15.0,
     "AGEP_max": 97.0,
+    "AGE_BIN_stats": {
+        "Youth": {
+            "count": 407362,
+            "percentage": 14.34
+        },
+        "YoungAdult": {
+            "count": 804430,
+            "percentage": 28.31
+        },
+        "Adult": {
+            "count": 876489,
+            "percentage": 30.85
+        },
+        "Senior": {
+            "count": 752945,
+            "percentage": 26.5
+        }
+    },
     "PINCP_percentiles": {
         "0.1": 0.0,
         "0.2": 5380.0,
@@ -29,6 +47,28 @@
     },
     "PINCP_min": 0.0,
     "PINCP_max": 1686200.0,
+    "INCOME_BIN_stats": {
+        "Low Income": {
+            "count": 937096,
+            "percentage": 32.98,
+            "description": "$0 \u2013 $15,000   (at/below federal poverty guideline)"
+        },
+        "Working Class": {
+            "count": 960943,
+            "percentage": 33.82,
+            "description": "$15k \u2013 $50k    (below U.S. median household income)"
+        },
+        "Middle Class": {
+            "count": 782305,
+            "percentage": 27.53,
+            "description": "$50k \u2013 $150k   (Pew Research middle-income tier)"
+        },
+        "High Income": {
+            "count": 160882,
+            "percentage": 5.66,
+            "description": "$150k+         (Pew Research upper-income tier, ~top 5%)"
+        }
+    },
     "SEX_counts": {
         "2": 1456818,
         "1": 1384408
