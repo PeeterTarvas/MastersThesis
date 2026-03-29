@@ -1,19 +1,13 @@
 {
     "AGEP_percentiles": {
-        "0.1": 21.0,
         "0.2": 29.0,
-        "0.25": 32.0,
-        "0.33": 38.0,
-        "0.5": 50.0,
-        "0.66": 60.0,
-        "0.75": 65.0,
-        "0.8": 68.0,
-        "0.9": 75.0,
-        "0.95": 81.0,
-        "0.99": 91.0
+        "0.4": 43.0,
+        "0.6": 57.0,
+        "0.8": 68.0
     },
     "AGEP_min": 15.0,
     "AGEP_max": 97.0,
+    "Total_data": 2841226,
     "AGE_BIN_stats": {
         "Youth": {
             "count": 407362,
@@ -32,41 +26,72 @@
             "percentage": 26.5
         }
     },
-    "PINCP_percentiles": {
-        "0.1": 0.0,
-        "0.2": 5380.0,
-        "0.25": 9600.0,
-        "0.33": 15000.0,
-        "0.5": 30000.0,
-        "0.66": 48000.0,
-        "0.75": 61000.0,
-        "0.8": 72000.0,
-        "0.9": 107800.0,
-        "0.95": 155000.0,
-        "0.99": 401000.0
-    },
     "PINCP_min": 0.0,
     "PINCP_max": 1686200.0,
+    "INCOME_BIN_QUANTILES_stats": {
+        "0.2": {
+            "count": 568103,
+            "percentage": 19.99,
+            "bin": 5380.0
+        },
+        "0.4": {
+            "count": 536984,
+            "percentage": 18.9,
+            "bin": 20100.0
+        },
+        "0.6": {
+            "count": 593694,
+            "percentage": 20.9,
+            "bin": 40000.0
+        },
+        "0.8": {
+            "count": 574199,
+            "percentage": 20.21,
+            "bin": 72000.0
+        }
+    },
+    "PINCP_quartiles": {
+        "0.25": 9600.0,
+        "0.5": 30000.0,
+        "0.75": 61000.0
+    },
+    "INCOME_BIN_QUARTILE_stats": {
+        "0.25": {
+            "count": 699209,
+            "percentage": 24.61,
+            "bin": 9600.0
+        },
+        "0.5": {
+            "count": 724358,
+            "percentage": 25.49,
+            "bin": 30000.0
+        },
+        "0.75": {
+            "count": 713861,
+            "percentage": 25.13,
+            "bin": 61000.0
+        }
+    },
     "INCOME_BIN_stats": {
         "Low Income": {
             "count": 937096,
             "percentage": 32.98,
-            "description": "$0 \u2013 $15,000   (at/below federal poverty guideline)"
+            "description": "$0 \u2013 $15,000"
         },
         "Working Class": {
             "count": 960943,
             "percentage": 33.82,
-            "description": "$15k \u2013 $50k    (below U.S. median household income)"
+            "description": "$15k \u2013 $50k"
         },
         "Middle Class": {
             "count": 782305,
             "percentage": 27.53,
-            "description": "$50k \u2013 $150k   (Pew Research middle-income tier)"
+            "description": "$50k \u2013 $150k"
         },
         "High Income": {
             "count": 160882,
             "percentage": 5.66,
-            "description": "$150k+         (Pew Research upper-income tier, ~top 5%)"
+            "description": "$150k+"
         }
     },
     "SEX_counts": {

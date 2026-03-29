@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import json
 from csv_loader import load_csv_chunked
 
@@ -8,29 +7,29 @@ BIN_LABELS = ['Youth', 'YoungAdult', 'Adult', 'Senior']
 INCOME_BIN_EDGES = [0, 15_000, 50_000, 150_000, float('inf')]
 INCOME_BIN_LABELS = ['Low Income', 'Working Class', 'Middle Class', 'High Income']
 INCOME_BIN_DESCRIPTIONS = {
-    'Low Income':     '$0 – $15,000   (at/below federal poverty guideline)',
-    'Working Class':  '$15k – $50k    (below U.S. median household income)',
-    'Middle Class':   '$50k – $150k   (Pew Research middle-income tier)',
-    'High Income':    '$150k+         (Pew Research upper-income tier, ~top 5%)',
+    'Low Income':     '$0 – $15,000',
+    'Working Class':  '$15k – $50k',
+    'Middle Class':   '$50k – $150k',
+    'High Income':    '$150k+',
 }
 
 def analyze_data():
     print("Loading data for analysis...")
-    df = load_csv_chunked("us_census_puma_data.csv", max_rows=3000000)
+    df = load_csv_chunked("us_census_puma_data.csv")
 
     stats = {}
 
     print("Calculating statistics...")
-    # Age stats
     stats["AGEP_percentiles"] = {str(k): float(v) for k, v in df["AGEP"].quantile(
-        [0.1, 0.2, 0.25, 0.33, 0.5, 0.66, 0.75, 0.8, 0.9, 0.95, 0.99]).items()}
+        [0.2, 0.4, 0.6, 0.8]).items()}
     stats["AGEP_min"] = float(df["AGEP"].min())
     stats["AGEP_max"] = float(df["AGEP"].max())
 
-    # Age binning
     df["AGE_BIN"] = pd.cut(df["AGEP"], bins=BIN_EDGES, labels=BIN_LABELS, right=False)
     total = len(df)
     age_bin_stats = {}
+    stats["Total_data"] = total
+
     for label in BIN_LABELS:
         count = int((df["AGE_BIN"] == label).sum())
         age_bin_stats[label] = {
@@ -39,17 +38,54 @@ def analyze_data():
         }
     stats["AGE_BIN_stats"] = age_bin_stats
 
-    stats["PINCP_percentiles"] = {str(k): float(v) for k, v in df["PINCP"].quantile(
-        [0.1, 0.2, 0.25, 0.33, 0.5, 0.66, 0.75, 0.8, 0.9, 0.95, 0.99]).items()}
+
     stats["PINCP_min"] = float(df["PINCP"].min())
     stats["PINCP_max"] = float(df["PINCP"].max())
+
+    income_quantiles = {str(k): float(v) for k, v in df["PINCP"].quantile(
+        [0.2, 0.4, 0.6, 0.8]).items()}
+
+    income_quantiles_bins = [*income_quantiles.values(), df["PINCP"].max()]
+    print(income_quantiles_bins)
+    income_bins = pd.cut(df["PINCP"], bins=income_quantiles_bins, labels=income_quantiles.keys(), right=False, include_lowest=True)
+
+    income_bin_stats_quantiles = {}
+    for key, value in income_quantiles.items():
+        count = int((income_bins == key).sum())
+        income_bin_stats_quantiles[f"{key}"] = {
+            "count": count,
+            "percentage": round(count / total * 100, 2),
+            "bin":  value
+        }
+
+    stats["INCOME_BIN_QUANTILES_stats"] = income_bin_stats_quantiles
+
+
+    income_quartiles = {str(k): float(v) for k, v in df["PINCP"].quantile(
+        [0.25, 0.5, 0.75]).items()}
+    stats["PINCP_quartiles"] = income_quartiles
+
+
+    income_quartiles_bins = [*income_quartiles.values(), df["PINCP"].max()]
+    income_bins = pd.cut(df["PINCP"], bins=income_quartiles_bins, labels=income_quartiles.keys(), right=False, include_lowest=True)
+
+    income_bin_stats_quartiles = {}
+    for key, value in income_quartiles.items():
+        count = int((income_bins == key).sum())
+        income_bin_stats_quartiles[f"{key}"] = {
+            "count": count,
+            "percentage": round(count / total * 100, 2),
+            "bin":  value
+        }
+
+    stats["INCOME_BIN_QUARTILE_stats"] = income_bin_stats_quartiles
 
     df["INCOME_BIN"] = pd.cut(
         df["PINCP"],
         bins=INCOME_BIN_EDGES,
         labels=INCOME_BIN_LABELS,
         right=False,
-        include_lowest=True,
+        include_lowest=True
     )
     income_bin_stats = {}
     for label in INCOME_BIN_LABELS:
