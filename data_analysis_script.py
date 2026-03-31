@@ -12,6 +12,19 @@ INCOME_BIN_DESCRIPTIONS = {
     'Middle Class':   '$50k – $150k',
     'High Income':    '$150k+',
 }
+## https://data.census.gov/app/mdat/ACSPUMS5Y2023/vars?cv=RC(1),HISP_RC2,RAC1P_RC1&rv=POVPIP_RC1&nv=AGEP_RC1,ucgid&wt=PWGTP&g=AwFm-BVBlBGWg&HISP_RC2=N4IgyiBcIEoKYGMD2ATOACAZkgTu~yaK6aALgIYCWANnMQBKUDOADuQHaULq6UDmldiAA0sKCHoBJMAAURIAGpQA2spAAGAIzyAcklLoAotSZwA7gAs4ODAHEcSAK4s6I0jkdwAusLXqATMLqAMxBACxBAKxBAGxBAOxBABxBAJzCmuoZmhmBmqGaEZrRmnGaiZopmun~Wf45-oH~of5h8oysHFzoABSCCNSOKIJ86GBsnEwWAJRuHt5eAL5AA&RAC1P_RC1=N4IgyiBcIEoKYGMD2ATOACAZkgTu~yaK6aALgIYCWANnMTuQhoRgBQBySpckJArhlJJ0AZwAOjDDjgjSOSglKUkAOxEAaUUgC2GauQBGcaiPTbyAT3RH0cvioTluKAHQBKEOthRYAQQDCAIwACp4gAGpQANpRIADM6gAs6gCs6gBs6gDs6gAc6gCcYb4ilOQqmtp81EoMCGXUmipOlABucJq46AA6IFwAFnA4vZ52cAC66rGBYQDq-ZTc6OTUqnCjOAKTsQBMYQBC~ggA1surKuvqY~PjAL5AA&POVPIP_RC1=N4IgyiBcIEoKYGMD2ATOACAZkgTugkgHbIC2cAtAC5LkAOSAbnDpQJ7o4CGlAlkh4lRwQAGlhQQABQDyANUn5JokLKgBtNSHIBGEdsgBmAAxHIAVhMiL25QDkkldAFEANgGc4AdwAWzDAHEcJABXWjgUUUocYLgAXRFNfVMAJgBOVOUjdGp0NIyRKJjY2IBfIA&AGEP_RC1=N4IgyiBcIEoKYGMD2ATOACAZkgTugggOZwgA0sUI~A4gKIAKZIAalANpsgCMkXAHJACcgpgDkkAF3S0ANgGc4AdwAWcHBmo4kAVwAOcFGUwBDeXAC6pTgAZSPewHYm19BKTouT0hJzaL5gF8gA
+
+RAC1P_LABELS = {
+    1: 'White',
+    2: 'Black or African American',
+    3: 'American Indian',
+    4: 'Alaska Native',
+    5: 'American Indian and Alaska Native Tribes',
+    6: 'Asian',
+    7: 'Native Hawaiian and Other Pacific Islander',
+    8: 'Some Other Race',
+    9: 'Two or More Races'
+}
 
 def analyze_data():
     print("Loading data for analysis...")
@@ -99,8 +112,15 @@ def analyze_data():
 
     stats["SEX_counts"] = {str(k): int(v) for k, v in df["SEX"].value_counts().items()}
 
-    stats["RAC1P_counts"] = {str(k): int(v) for k, v in df["RAC1P"].value_counts().items()}
+    race_counts = {}
+    for k, v in df["RAC1P"].value_counts().items():
+        count = int((df["RAC1P"] == k).sum())
+        race_counts[RAC1P_LABELS[k]] = {
+            "count": count,
+            "percentage": round(count / total * 100, 2),
+        }
 
+    stats["RAC1P_counts"] = race_counts
     stats["Lat_bounds"] = {"min": float(df["Latitude"].min()), "max": float(df["Latitude"].max())}
     stats["Lon_bounds"] = {"min": float(df["Longitude"].min()), "max": float(df["Longitude"].max())}
 

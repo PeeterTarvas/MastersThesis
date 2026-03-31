@@ -99,15 +99,42 @@
         "1": 1384408
     },
     "RAC1P_counts": {
-        "1": 1936707,
-        "9": 281531,
-        "2": 252876,
-        "6": 175584,
-        "8": 155153,
-        "3": 28442,
-        "5": 4612,
-        "7": 4588,
-        "4": 1733
+        "White": {
+            "count": 1936707,
+            "percentage": 68.16
+        },
+        "Two or More Races": {
+            "count": 281531,
+            "percentage": 9.91
+        },
+        "Black or African American": {
+            "count": 252876,
+            "percentage": 8.9
+        },
+        "Asian": {
+            "count": 175584,
+            "percentage": 6.18
+        },
+        "Some Other Race": {
+            "count": 155153,
+            "percentage": 5.46
+        },
+        "American Indian": {
+            "count": 28442,
+            "percentage": 1.0
+        },
+        "American Indian and Alaska Native Tribes": {
+            "count": 4612,
+            "percentage": 0.16
+        },
+        "Native Hawaiian and Other Pacific Islander": {
+            "count": 4588,
+            "percentage": 0.16
+        },
+        "Alaska Native": {
+            "count": 1733,
+            "percentage": 0.06
+        }
     },
     "Lat_bounds": {
         "min": 19.603361129760742,
