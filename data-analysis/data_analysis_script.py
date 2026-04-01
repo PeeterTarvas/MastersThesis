@@ -28,7 +28,7 @@ RAC1P_LABELS = {
 
 def analyze_data():
     print("Loading data for analysis...")
-    df = load_csv_chunked("us_census_puma_data.csv")
+    df = load_csv_chunked("../us_census_puma_data.csv")
 
     stats = {}
 
