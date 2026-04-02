@@ -1,7 +1,6 @@
 from typing import Callable, Any, NamedTuple
 
 import numpy as np
-from collections import defaultdict
 import pandas as pd
 
 from evaluate import ClusteringResult, make_result, compute_pof, compute_group_costs, compute_cluster_costs
@@ -9,9 +8,9 @@ from evaluate import ClusteringResult, make_result, compute_pof, compute_group_c
 
 class TrialOutput(NamedTuple):
     """Everything run_trials needs from one completed trial."""
-    fair_result: ClusteringResult       # result from the fair algorithm
-    unfair_result: ClusteringResult     # vanilla k-median baseline
-    timing: dict[str, float]           # step → seconds
+    fair_result: ClusteringResult
+    unfair_result: ClusteringResult
+    timing: dict[str, float]
 
 
 def run_trials(algorithm_fn: Callable[..., Any],
@@ -44,8 +43,95 @@ def run_trials(algorithm_fn: Callable[..., Any],
         print(f"  → fair_cost={fc:,.2f}  unfair_cost={uc:,.2f}  "
               f"PoF={pof:.4f}")
 
+    # pick representitive result whos cost is closest to median fair cost
+    median_cost = float(np.median(fair_costs))
+    rep_idx = int(np.argmin(np.abs(np.array(fair_costs) - median_cost)))
+    rep_trial = trial_outputs[rep_idx]
 
-    return final_results
+    all_keys = set().union(*all_timings)
+    avg_timing: dict[str, float] = {
+        k: float(np.mean([t.get(k, 0.0) for t in all_timings]))
+        for k in all_keys
+    }
+
+    rep_result = ClusteringResult(
+        algorithm=rep_trial.fair_result.algorithm + f"_avg{n_runs}",
+        centers=rep_trial.fair_result.centers,
+        labels=rep_trial.fair_result.labels,
+        fair_cost=rep_trial.fair_result.fair_cost,
+        unfair_cost=rep_trial.fair_result.unfair_cost,
+        X=rep_trial.fair_result.X,
+        weights=rep_trial.fair_result.weights,
+        group_codes=rep_trial.fair_result.group_codes,
+        group_names=rep_trial.fair_result.group_names,
+        timing=avg_timing,
+    )
+
+    group_names = rep_trial.fair_result.group_names
+    mean_group_fair: dict[str, float] = {}
+    std_group_fair: dict[str, float] = {}
+    mean_group_unfair: dict[str, float] = {}
+
+    for g in group_names:
+        vals_fair = [d.get(g, 0.0) for d in all_cluster_fair_costs]
+        vals_unfair = [d.get(g, 0.0) for d in all_cluster_unfair_costs]
+        mean_group_fair[g] = float(np.mean(vals_fair))
+        std_group_fair[g] = float(np.std(vals_fair, ddof=1 if n_runs > 1 else 0))
+        mean_group_unfair[g] = float(np.mean(vals_unfair))
+
+    mean_group_pof: dict[str, float] = {
+        g: mean_group_fair[g] / mean_group_unfair[g]
+        if mean_group_unfair[g] > 0 else float("inf")
+        for g in group_names
+    }
+
+    avg_summary: dict[str, Any] = {
+        "Algorithm": rep_result.algorithm,
+        "number of runs": n_runs,
+        "representative_trial": rep_idx + 1,
+        "Fair Cost (mean)": float(np.mean(fair_costs)),
+        "Fair Cost (std)": float(np.std(fair_costs, ddof=1 if n_runs > 1 else 0)),
+        "Fair Cost (min)": float(np.min(fair_costs)),
+        "Fair Cost (max)": float(np.max(fair_costs)),
+        "Unfair Cost (mean)": float(np.mean(unfair_costs)),
+        "Unfair Cost (std)": float(np.std(unfair_costs, ddof=1 if n_runs > 1 else 0)),
+        "PoF (mean)": float(np.mean(pofs)),
+        "PoF (std)": float(np.std(pofs, ddof=1 if n_runs > 1 else 0)),
+        "PoF (min)": float(np.min(pofs)),
+        "PoF (max)": float(np.max(pofs)),
+        "Group Fair Costs (mean)": mean_group_fair,
+        "Group Fair Costs (std)": std_group_fair,
+        "Group Unfair Costs (mean)": mean_group_unfair,
+        "Group PoFs (mean)": mean_group_pof,
+        "Avg Timing": avg_timing,
+        "_fair_costs": fair_costs,
+        "_unfair_costs": unfair_costs,
+        "_pofs": pofs,
+        "_timings": all_timings,
+    }
+    _print_summary(avg_summary)
+
+    return rep_result, avg_summary
+
+
+def _print_summary(s: dict) -> None:
+    print(f"\n{'='*60}")
+    print(f"  TRIAL AVERAGE SUMMARY — {s['Algorithm']}")
+    print(f"  Trials: {s['n_trials']}  |  "
+          f"Representative: #{s['representative_trial']}")
+    print(f"  Fair Cost   : {s['Fair Cost (mean)']:>12,.2f}  "
+          f"± {s['Fair Cost (std)']:,.2f}  "
+          f"[{s['Fair Cost (min)']:,.2f} – {s['Fair Cost (max)']:,.2f}]")
+    print(f"  Unfair Cost : {s['Unfair Cost (mean)']:>12,.2f}  "
+          f"± {s['Unfair Cost (std)']:,.2f}")
+    print(f"  PoF         : {s['PoF (mean)']:>12.4f}  "
+          f"± {s['PoF (std)']:.4f}  "
+          f"[{s['PoF (min)']:.4f} – {s['PoF (max)']:.4f}]")
+    if s["Group PoFs (mean)"]:
+        print("  Group PoFs  :")
+        for g, gpof in s["Group PoFs (mean)"].items():
+            print(f"    {g:<20s}: {gpof:.4f}")
+    print(f"{'='*60}")
 
 
 
