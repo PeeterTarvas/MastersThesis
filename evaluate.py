@@ -123,6 +123,7 @@ def compute_cluster_costs(result: ClusteringResult) -> dict:
     return costs
 
 
+
 def _match_clusters(fair_result: ClusteringResult, unfair_result: ClusteringResult) -> dict:
     """
     Match fair clusteers to unfair clusters by nearest centre (L1).
@@ -133,7 +134,7 @@ def _match_clusters(fair_result: ClusteringResult, unfair_result: ClusteringResu
     D = cdist(fair_result.centers, unfair_result.centers, metric="cityblock")
     # greedy: assign each fair cluster to its closest unfair cluster
     # (many-to-one is fine for PoF — we just want the right cost baseline)
-    return {j: int(np.argmin(D[j])) for j in range(fair_result.k)}
+    return {cluster_idx: int(np.argmin(D[cluster_idx])) for cluster_idx in range(fair_result.k)}
 
 
 def compute_cluster_pof(
@@ -299,11 +300,6 @@ def evaluate(
             "Max C-PoF": summary["Max C-PoF"],
             "Avg C-PoF": summary["Avg C-PoF"],
         }
-
-        for g, val in summary["Group_PoFs"].items():
-            flat_summary[f"G-PoF_{g}"] = val
-            flat_summary[f"Fair_Cost_{g}"] = summary["Group_Costs (Fair)"].get(g, None)
-            flat_summary[f"Unfair_Cost_{g}"] = summary["Group_Costs (Unfair)"].get(g, None)
 
         df = pd.DataFrame([flat_summary])
         df.to_csv(save_dir / "evaluation_summary.csv", index=False)
