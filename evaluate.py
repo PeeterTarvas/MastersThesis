@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from pathlib import Path
+from scipy.spatial.distance import cdist
 
 
 @dataclass
 class ClusteringResult:
-    """Holds everything needed for evaluation and visualisation."""
     algorithm: str
     centers: np.ndarray
     labels: np.ndarray
@@ -65,10 +65,6 @@ def make_result(
 
 
 def compute_pof(fair_cost: float, unfair_cost: float) -> float:
-    """
-    Overall Price of Fairness = fair_cost / unfair_cost.
-    1.0 means fairness is free; higher means a costlier fair solution.
-    """
     if unfair_cost == 0:
         return float("inf")
     return fair_cost / unfair_cost
@@ -76,12 +72,8 @@ def compute_pof(fair_cost: float, unfair_cost: float) -> float:
 
 def compute_group_costs(result: ClusteringResult) -> dict:
     """
-    Weighted L1 assignment cost broken down by demographic group.
+    weighted L1 assignment cost broken down by demographic group.
     Uses result.X and result.centers
-
-    Returns
-    -------
-    dict  group_name (str) → weighted cost (float)
     """
     X = result.X
     n = len(X)
@@ -107,12 +99,6 @@ def compute_gpof(
     Group-level Price of Fairness.
 
     G-PoF(g) = fair_cost(g) / unfair_cost(g)
-
-    Both dicts must share the same keys (group names).
-
-    Returns
-    -------
-    dict  group_name → G-PoF (float)
     """
     gpof = {}
     for g, fc in fair_group_costs.items():
@@ -123,34 +109,27 @@ def compute_gpof(
 
 def compute_cluster_costs(result: ClusteringResult) -> dict:
     """
-    Weighted L1 assignment cost broken down by cluster.
-
-    Returns
-    -------
-    dict  cluster_id (int) → weighted cost (float)
+    weighted L1 assignment cost broken down by cluster.
     """
     X = result.X
     costs = {}
-    for j in range(result.k):
-        mask = result.labels == j
+    for center in range(result.k):
+        mask = result.labels == center
         if not mask.any():
-            costs[j] = 0.0
+            costs[center] = 0.0
             continue
-        dists = np.sum(np.abs(X[mask] - result.centers[j]), axis=1)
-        costs[j] = float((dists * result.weights[mask]).sum())
+        dists = np.sum(np.abs(X[mask] - result.centers[center]), axis=1)
+        costs[center] = float((dists * result.weights[mask]).sum())
     return costs
 
 
 def _match_clusters(fair_result: ClusteringResult, unfair_result: ClusteringResult) -> dict:
     """
-    Match fair clusters to unfair clusters by nearest centre (L1).
-    Returns dict  fair_cluster_id → unfair_cluster_id.
-
+    Match fair clusteers to unfair clusters by nearest centre (L1).
     This is needed because the two runs may number their clusters differently.
     Simple greedy nearest-centre matching — good enough for PoF
     comparisons where k is small.
     """
-    from scipy.spatial.distance import cdist
     D = cdist(fair_result.centers, unfair_result.centers, metric="cityblock")
     # greedy: assign each fair cluster to its closest unfair cluster
     # (many-to-one is fine for PoF — we just want the right cost baseline)
@@ -163,13 +142,8 @@ def compute_cluster_pof(
 ) -> dict:
     """
     Per-cluster Price of Fairness.
-
     Clusters are matched by nearest centre between the two runs, then:
         C-PoF(j) = fair_cluster_cost(j) / unfair_cluster_cost(matched_j)
-
-    Returns
-    -------
-    dict  cluster_id (int) → C-PoF (float)
     """
     fair_costs = compute_cluster_costs(fair_result)
     unfair_costs = compute_cluster_costs(unfair_result)
@@ -190,12 +164,8 @@ def audit_fairness_proportional(
         verbose: bool = True,
 ) -> int:
     """
-    Per-(cluster, group) proportional fairness check for Bera / Essential k-Median.
-
-    Flags any cluster where the weighted fraction of group h falls outside
+    flags any cluster where the weighted fraction of group h falls outside
     [lower_bounds[h] - ε, upper_bounds[h] + ε].
-
-    Returns the total number of violations.
     """
     violations = 0
     tol = 1e-4
@@ -231,10 +201,8 @@ def audit_fairness_exact_balance(
         result: ClusteringResult,
 ) -> int:
     """
-    Exact equal-group-size balance check for Böhm et al.
-
-    Every cluster must contain exactly 1/H of each group (count-based).
-    Returns the total number of (cluster, group) violations.
+    every cluster must contain exactly 1/H of each group (count-based).
+    returns the total number of (cluster, group) violations.
     """
     H = result.n_groups
     violations = 0
@@ -276,7 +244,6 @@ def evaluate(
     result             : ClusteringResult from the fair algorithm
     unfair_result      : ClusteringResult from plain k-median (same X).
                          Required for G-PoF.  If None, G-PoF is skipped.
-    verbose            : print a formatted summary
 
     Returns
     -------

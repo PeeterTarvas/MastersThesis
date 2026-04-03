@@ -54,7 +54,7 @@ def run_trials(algorithm_fn: Callable[..., Any],
         for k in all_keys
     }
 
-    rep_result = ClusteringResult(
+    result = ClusteringResult(
         algorithm=rep_trial.fair_result.algorithm + f"_avg{n_runs}",
         centers=rep_trial.fair_result.centers,
         labels=rep_trial.fair_result.labels,
@@ -67,26 +67,25 @@ def run_trials(algorithm_fn: Callable[..., Any],
         timing=avg_timing,
     )
 
-    group_names = rep_trial.fair_result.group_names
-    mean_group_fair: dict[str, float] = {}
-    std_group_fair: dict[str, float] = {}
-    mean_group_unfair: dict[str, float] = {}
+    # per cluster results
+    per_cluster_fair_costs: dict[int, list[float]] = compute_cluster_costs(result)
 
-    for g in group_names:
-        vals_fair = [d.get(g, 0.0) for d in all_cluster_fair_costs]
-        vals_unfair = [d.get(g, 0.0) for d in all_cluster_unfair_costs]
-        mean_group_fair[g] = float(np.mean(vals_fair))
-        std_group_fair[g] = float(np.std(vals_fair, ddof=1 if n_runs > 1 else 0))
-        mean_group_unfair[g] = float(np.mean(vals_unfair))
+    # have to ask supervisor what to look for here mby, not sure what to measure/how
+    # mby just take the median result as a specific example?
+    mean_cluster_unfair_costs: dict[str, float] = {}
+    std_cluster_fair_costs: dict[str, float] = {}
+    mean_cluster_fair_costs: dict[str, float] = {}
+    for cluster_center_idx, points in per_cluster_fair_costs.items():
+        vals_fair = [d.get(cluster_center_idx, 0.0) for d in all_cluster_fair_costs]
+        vals_unfair = [d.get(cluster_center_idx, 0.0) for d in all_cluster_unfair_costs]
+        mean_cluster_fair_costs[cluster_center_idx] = float(np.mean(vals_fair))
+        std_cluster_fair_costs[cluster_center_idx] = float(np.std(vals_fair, ddof=1 if n_runs > 1 else 0))
+        mean_cluster_unfair_costs[cluster_center_idx] = float(np.mean(vals_unfair))
 
-    mean_group_pof: dict[str, float] = {
-        g: mean_group_fair[g] / mean_group_unfair[g]
-        if mean_group_unfair[g] > 0 else float("inf")
-        for g in group_names
-    }
+
 
     avg_summary: dict[str, Any] = {
-        "Algorithm": rep_result.algorithm,
+        "Algorithm": result.algorithm,
         "number of runs": n_runs,
         "representative_trial": rep_idx + 1,
         "Fair Cost (mean)": float(np.mean(fair_costs)),
@@ -99,10 +98,9 @@ def run_trials(algorithm_fn: Callable[..., Any],
         "PoF (std)": float(np.std(pofs, ddof=1 if n_runs > 1 else 0)),
         "PoF (min)": float(np.min(pofs)),
         "PoF (max)": float(np.max(pofs)),
-        "Group Fair Costs (mean)": mean_group_fair,
-        "Group Fair Costs (std)": std_group_fair,
-        "Group Unfair Costs (mean)": mean_group_unfair,
-        "Group PoFs (mean)": mean_group_pof,
+        "Median Run Cluster Fair Costs (mean)": mean_group_fair,
+        "Median Run Cluster Fair Costs (std)": std_group_fair,
+        "Median Run Cluster Unfair Costs (mean)": mean_group_unfair,
         "Avg Timing": avg_timing,
         "_fair_costs": fair_costs,
         "_unfair_costs": unfair_costs,
@@ -111,7 +109,7 @@ def run_trials(algorithm_fn: Callable[..., Any],
     }
     _print_summary(avg_summary)
 
-    return rep_result, avg_summary
+    return result, avg_summary
 
 
 def _print_summary(s: dict) -> None:
