@@ -25,6 +25,7 @@ def load_csv_chunked(
         dtypes: dict = LOAD_DTYPES,
         chunk_size: int = 200_000,
         max_rows: Optional[int] = None,
+        random_seed: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Load CSV in chunks, keeping memory usage low.
@@ -32,22 +33,32 @@ def load_csv_chunked(
 
     Parameters
     ----------
-    csv_path   : path to us_census_puma_data.csv
-    cols       : columns to load (others are skipped)
-    dtypes     : dtype per column (use float32 to halve memory vs float64)
-    chunk_size : rows per chunk (tune down if RAM is tight)
-    max_rows   : stop after this many rows (useful for quick experiments)
+    csv_path    : path to us_census_puma_data.csv
+    cols        : columns to load (others are skipped)
+    dtypes      : dtype per column (use float32 to halve memory vs float64)
+    chunk_size  : rows per chunk (tune down if RAM is tight)
+    max_rows    : desired sample size; None → return all clean rows.
+    random_seed : If provided, performs vectorised reservoir sampling so that
+                  every row in the file has equal probability of appearing in
+                  the final sample.  Different seeds produce independent
+                  samples; the same seed reproduces the same sample.
+                  If None and max_rows is set, returns the first max_rows
+                  clean rows (deterministic, fast early-exit).
 
     Returns
     -------
-    df : concatenated DataFrame, all float32
+    pd.DataFrame with up to max_rows rows, all NaN/invalid rows removed.
     """
     path = Path(csv_path)
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {csv_path}")
 
-    chunks = []
-    total_loaded = 0
+    do_random = (random_seed is not None) and (max_rows is not None)
+    rng = np.random.default_rng(random_seed) if do_random else None
+
+    reservoir: Optional[pd.DataFrame] = None
+    chunks: list[pd.DataFrame] = []   # used only in deterministic path
+    total_clean = 0
     t0 = time.time()
 
     reader = pd.read_csv(
@@ -55,39 +66,72 @@ def load_csv_chunked(
         usecols=cols,
         dtype=dtypes,
         chunksize=chunk_size,
-        engine='c'  # faster than pyarrow for chunked reads
+        engine="c",
     )
 
     for i, chunk in enumerate(reader):
+        # ---- clean -------------------------------------------------------
         chunk = chunk.dropna(subset=cols)
-
-        # Filter out clearly invalid values
         if "Longitude" in chunk.columns:
             chunk = chunk[(chunk["Longitude"] >= -180) & (chunk["Longitude"] <= 180)]
         if "Latitude" in chunk.columns:
-            chunk = chunk[(chunk["Latitude"] >= -90) & (chunk["Latitude"] <= 90)]
+            chunk = chunk[(chunk["Latitude"] >= -90)  & (chunk["Latitude"] <= 90)]
         if "PINCP" in chunk.columns:
-            chunk = chunk[chunk["PINCP"] >= 0]  # drop negative income
+            chunk = chunk[chunk["PINCP"] >= 0]
+        if len(chunk) == 0:
+            continue
 
-        chunks.append(chunk)
-        total_loaded += len(chunk)
+        total_clean += len(chunk)
 
-        elapsed = time.time() - t0
-        print(f"  Chunk {i + 1}: loaded {total_loaded:,} rows ({elapsed:.1f}s)", end="\r")
+        # ---- random reservoir sampling -----------------------------------
+        if do_random:
+            chunk = chunk.copy()                        # avoid SettingWithCopyWarning
+            chunk["_w"] = rng.random(size=len(chunk))  # uniform weight per row
+            if reservoir is None:
+                reservoir = chunk
+            else:
+                reservoir = pd.concat([reservoir, chunk], ignore_index=True)
+            if len(reservoir) > max_rows:
+                reservoir = reservoir.nsmallest(max_rows, "_w")
 
-        if max_rows is not None and total_loaded >= max_rows:
-            break
+        # ---- deterministic path: take first max_rows rows ----------------
+        else:
+            if max_rows is not None:
+                remaining = max_rows - sum(len(c) for c in chunks)
+                if remaining <= 0:
+                    break
+                if len(chunk) > remaining:
+                    chunk = chunk.iloc[:remaining]
+            chunks.append(chunk)
 
-    print(f"\n  Done: {total_loaded:,} clean rows loaded in {time.time() - t0:.1f}s")
+        print(
+            f"  Chunk {i+1:>3}: {total_clean:>10,} clean rows  ({time.time()-t0:.1f}s)",
+            end="\r",
+        )
 
-    df = pd.concat(chunks, ignore_index=True)
-    del chunks
-    gc.collect()
+    print(f"\n  Done: {total_clean:,} clean rows in {time.time()-t0:.1f}s")
 
-    if max_rows is not None:
-        df = df.iloc[:max_rows].copy()
+    # ---- assemble result -------------------------------------------------
+    if do_random:
+        if reservoir is None:
+            return pd.DataFrame(columns=list(cols))
+        df = reservoir.drop(columns=["_w"])
+        # Shuffle to remove the weight-sorted order nsmallest leaves behind
+        df = df.sample(frac=1.0, random_state=int(rng.integers(2**31))).reset_index(drop=True)
+    else:
+        if not chunks:
+            return pd.DataFrame(columns=list(cols))
+        df = pd.concat(chunks, ignore_index=True)
+        del chunks
+        gc.collect()
 
+    print(f"  Final sample: {len(df):,} rows")
     return df
+
+
+
+
+
 
 
 def preprocess_dataset(df: pd.DataFrame):

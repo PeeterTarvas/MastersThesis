@@ -17,9 +17,9 @@ class TrialOutput(NamedTuple):
     timing: dict[str, float]
 
 
-def run_trials(algorithm_fn: Callable[..., Any],
-                result_builder: Callable[[Any, int], TrialOutput],
-               df: pd.DataFrame, n_runs: int, **kwargs):
+def run_trials(chunk_size, max_rows, algorithm_fn: Callable[..., Any],
+                result_builder: Callable[[Any, int], TrialOutput], n_runs: int, **kwargs):
+
     fair_costs: list[float] = []
     unfair_costs: list[float] = []
     pofs: list[float] = []
@@ -30,6 +30,18 @@ def run_trials(algorithm_fn: Callable[..., Any],
 
     for run_id in range(n_runs):
         seed = 42 + run_id
+
+        df = csv_loader.load_csv_chunked(
+            "us_census_puma_data.csv",
+            csv_loader.LOAD_COLS,
+            csv_loader.LOAD_DTYPES,
+            chunk_size=chunk_size,
+            max_rows=max_rows,
+            random_seed=seed
+        )
+
+        df = csv_loader.preprocess_dataset(df)
+
         raw = algorithm_fn(df, random_seed=seed, **kwargs)
         trial: TrialOutput = result_builder(raw)
         trial_outputs.append(trial)
@@ -149,7 +161,7 @@ def _print_summary(s: dict) -> None:
           f"± {s['All results PoF (std)']:.4f}  "
           f"[{s['All results PoF (min)']:.4f} – {s['All results PoF (max)']:.4f}]")
     print(f"  Median Run Cluster Fair Costs (mean): {s['Median Run Cluster Fair Costs (mean)']}\n")
-    print(f"  Median Run Cluster Fair Costs (std): {s['Median Run Cluster Fair Costs (mean)']}\n")
+    print(f"  Median Run Cluster Fair Costs (std): {s['Median Run Cluster Fair Costs (std)']}\n")
     print(f"  Median Run Cluster Unfair Costs (mean): {s['Median Run Cluster Unfair Costs (mean)']}\n")
     print(f"  Median Run Cluster Unfair Costs (std): {s['Median Run Cluster Unfair Costs (std)']}\n")
 
@@ -295,15 +307,9 @@ def build_boehm_result(raw) -> TrialOutput:
 
 
 if __name__ == "__main__":
-    df = csv_loader.load_csv_chunked(
-        "us_census_puma_data.csv",
-        csv_loader.LOAD_COLS,
-        csv_loader.LOAD_DTYPES,
-        chunk_size=10_00,
-        max_rows=10_00,
-    )
 
-    df_processed = csv_loader.preprocess_dataset(df)
+    CHUNK_SIZE = 10_00
+    ROW_SIZE = 10_00
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
@@ -315,9 +321,10 @@ if __name__ == "__main__":
     print("  RUNNING BÖHM ET AL. (Exact Balance / Assignment)")
     print("="*60)
     boehm_result, boehm_summary = run_trials(
+        chunk_size=CHUNK_SIZE,
+        max_rows=ROW_SIZE,
         algorithm_fn=boehm_fc,
         result_builder=build_boehm_result,
-        df=df_processed,
         n_runs=N_RUNS,
         # Böhm specific kwargs:
         feature_cols=FEATURE_COLS,
