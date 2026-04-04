@@ -79,7 +79,7 @@ def solve_fair_lp(
         A_eq=A_eq_csc,
         b_eq=b_equality_constraint,
         bounds=[(0.0, 1.0)] * n_vars,
-        method='highs',
+        method='highs-ds',
         options={'disp': False, 'presolve': True},
     )
 
@@ -100,31 +100,60 @@ def min_cost_flow_rounding(
     nr_groups = int(group_codes.max()) + 1
 
     # calculate weighted mass per group per center
-    mass_group = np.array([
-        (x_lp[group_codes == group_idx] * weights[group_codes == group_idx, np.newaxis]).sum(axis=0)
-        for group_idx in range(nr_groups)
-    ])
+    mass_group = np.zeros((nr_groups, k))
+    for group_nr in range(nr_groups):
+        mask = group_codes == group_nr
+        mass_group[group_nr] = (x_lp[mask] * weights[mask, np.newaxis]).sum(axis=0)
+
+    # total weighted mass assigned to centre i
+    mass_total = (x_lp * weights[:, np.newaxis]).sum(axis=0)
+
     # integer components and remainders
-    floor_mass_group = np.floor(mass_group + 1e-6).astype(int)
+    floor_mass_group = np.floor(mass_group + 1e-9).astype(int)
+    floor_mass_total = np.floor(mass_total + 1e-9).astype(int)
 
-    # total supply must equal total demand
-    total_supply = int(round(weights.sum()))
+    frac_group = mass_group - floor_mass_group
+    frac_total = mass_total - floor_mass_total
 
+    B_i = floor_mass_total - floor_mass_group.sum(axis=0)
+    B = int(round(weights.sum())) - floor_mass_total.sum()
+
+    # scale numbers up because min_cost_flow works slower with floats
+    COST_SCALE = 100_000
     G = nx.DiGraph()
-    sink = "sink_t"
-    G.add_node(sink, demand=total_supply)
+
+
+    # layer 1: each point node supplies their weight units
+    for point in range(n):
+        G.add_node(f"p_{point}", demand=-int(round(weights[point])))
+
+    # layer 2: color_center nodes - each takes lower mass_h units
+    for cluster in range(k):
+        for group_nr in range(nr_groups):
+            G.add_node(f"vh_{group_nr}_{cluster}", demand=int(floor_mass_group[group_nr, cluster]))
+
+    # layer 3: center aggregator nodes - absorb B_i units
+    for center in range(k):
+        G.add_node(f"v_{center}", demand=int(round(B_i[center])))
+
+    # Layer 4: sink — absorbs B units
+    G.add_node("t", demand=int(round(B)))
 
     for point in range(n):
-        G.add_node(point, demand=-int(round(weights[point])))
-    points, centers = np.where(x_lp > 1e-9)
-    for point, center in zip(points, centers):
-        G.add_edge(point, f"ch_{group_codes[point]}_{center}", weight=D[point, center])
+        group_code = group_codes[point]
+        for center in range(k):
+            if x_lp[point, center] > 1e-12:
+                G.add_edge(f"p_{point}", f"vh_{group_code}_{center}",
+                           capacity=1,
+                           weight=int(round(D[point, center] * COST_SCALE)))
+    for center in range(k):
+        for group_nr in range(nr_groups):
+            if frac_group[group_nr, center] > 1e-9:
+                G.add_edge(f"vh_{group_nr}_{center}", f"v_{center}", capacity=1, weight=0)
 
     for center in range(k):
-        G.add_edge(f"c_{center}", sink, weight=0)
-        for group in range(nr_groups):
-            G.add_edge(f"ch_{group}_{center}",
-                       f"c_{center}", capacity=floor_mass_group[group, center] + 1, weight=0)
+        if frac_total[center] > 1e-9:
+            G.add_edge(f"v_{center}", "t", capacity=1, weight=0)
 
     try:
         flow_dict = nx.min_cost_flow(G)
@@ -139,10 +168,10 @@ def min_cost_flow_rounding(
 
     labels = np.zeros(n, dtype=np.int32)
     for point in range(n):
-        h = group_codes[point]
+        point_code = group_codes[point]
         best_flow, assigned = 0, -1
         for center in range(k):
-            f_val = flow_dict.get(point, {}).get(f"ch_{h}_{center}", 0)
+            f_val = flow_dict.get(f"p_{point}", {}).get(f"vh_{point_code}_{center}", 0)
             if f_val > best_flow:
                 best_flow, assigned = f_val, center
 
@@ -239,16 +268,14 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        csv_loader.LOAD_DTYPES,
-        chunk_size=10_000,
         max_rows=10_000,
     )
     ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
     df = csv_loader.preprocess_dataset(df)
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K = 10
-    ALPHA = 0.05
+    K = 5
+    ALPHA = 0.02
 
     (centers, unfair_labels, unfair_cost, labels, cost, timing,
      x, weights, group_codes, group_names, lower_bounds, upper_bounds) = fair_clustering(
@@ -290,9 +317,8 @@ if __name__ == "__main__":
     audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
     plot_execution_times(fair_result ,timing, title="Essential k-Median — Run Time")
-    plot_spatial_clusters(df, fair_result,
-                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
-                          weight_col=None)
+    plot_spatial_clusters(df, fair_result, unfair_result,
+                          feature_cols=FEATURE_COLS)
     plot_cluster_pof(fair_result, [summary])
     plot_pof_comparison(fair_result, [summary])
     plot_group_pof(fair_result, [summary])

@@ -232,6 +232,20 @@ def audit_fairness_exact_balance(
     return violations
 
 
+def calculate_post_fairness_centers(x: np.ndarray, labels: np.ndarray, k: int) -> np.ndarray:
+    _, d = x.shape
+    new_centers = np.zeros((k, d))
+
+    for j in range(k):
+        cluster_points = x[labels == j]
+        if len(cluster_points) > 0:
+            new_centers[j] = np.median(cluster_points, axis=0)
+        else:
+            new_centers[j] = np.zeros(d)
+
+    return new_centers
+
+
 def evaluate(
         result: ClusteringResult,
         unfair_result: Optional[ClusteringResult] = None,
@@ -405,85 +419,88 @@ def plot_execution_times(
 
 def plot_spatial_clusters(
         df: pd.DataFrame,
-        result: ClusteringResult,
+        fair_result: ClusteringResult,
+        unfair_result: ClusteringResult,
         feature_cols: list[str],
-        group_col: str,
-        weight_col: Optional[str] = "Weight",
-        save_path: Optional[str] = None,
+        save_path: Optional[str] = None
 ) -> None:
+    """
+    Plots the 'Before' (unfair) and 'After' (fair) clustering results in separate figures.
+    Highlights the points that were reassigned to satisfy fairness bounds.
+    """
     if not save_path:
-        save_dir = Path("results") / result.algorithm
+        save_dir = Path("results") / fair_result.algorithm
         save_dir.mkdir(parents=True, exist_ok=True)
-        save_path = str(save_dir / "spatial")
+        save_path = str(save_dir / "spatial_changes")
 
     lat_col, lon_col = feature_cols
     df_vis = df.copy()
-    df_vis["_Cluster"] = result.labels
+
+    mapping = _match_clusters(fair_result, unfair_result)
+    mapped_fair_labels = np.array([mapping.get(lbl, lbl) for lbl in fair_result.labels])
+
+    df_vis["Unfair_Cluster"] = unfair_result.labels
+    df_vis["Fair_Cluster"] = mapped_fair_labels
+    df_vis["Changed"] = df_vis["Unfair_Cluster"] != df_vis["Fair_Cluster"]
 
     jitter = 0.008
-    df_jit = df_vis.copy()
-    df_jit[lon_col] = df_jit[lon_col] + np.random.uniform(-jitter, jitter, len(df_jit))
-    df_jit[lat_col] = df_jit[lat_col] + np.random.uniform(-jitter, jitter, len(df_jit))
+    df_vis[lon_col] = df_vis[lon_col] + np.random.uniform(-jitter, jitter, len(df_vis))
+    df_vis[lat_col] = df_vis[lat_col] + np.random.uniform(-jitter, jitter, len(df_vis))
 
-    fig1, ax1 = plt.subplots(figsize=(7, 6))
+    # before (Unfair Baseline)
+    fig1, ax1 = plt.subplots(figsize=(8, 6))
     sns.scatterplot(
-        data=df_jit, x=lon_col, y=lat_col, hue="_Cluster", palette="tab10",
-        alpha=0.4, s=14, legend="full", ax=ax1,
+        data=df_vis, x=lon_col, y=lat_col, hue="Unfair_Cluster", palette="tab10",
+        alpha=0.5, s=15, legend="full", ax=ax1
     )
     ax1.scatter(
-        result.centers[:, 1], result.centers[:, 0],
-        c="red", marker="X", s=150, zorder=5, label="Centers",
+        unfair_result.centers[:, 1], unfair_result.centers[:, 0],
+        c="black", marker="X", s=150, zorder=5, label="Original Centers"
     )
-    ax1.set_title(f"By Cluster — {result.algorithm}")
+    ax1.set_title(f"Before: Vanilla k-Median")
     ax1.set_xlabel("Longitude (scaled)")
     ax1.set_ylabel("Latitude (scaled)")
     handles, labels = ax1.get_legend_handles_labels()
-    ax1.legend(handles, labels, title="Cluster", fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left")
+    ax1.legend(handles, labels, title="Cluster", bbox_to_anchor=(1.01, 1), loc="upper left")
     ax1.grid(True, linestyle="--", alpha=0.4)
     fig1.tight_layout()
+
     if save_path:
-        fig1.savefig(f"{save_path}_cluster.png", dpi=150, bbox_inches="tight")
+        fig1.savefig(f"{save_path}_before.png", dpi=150, bbox_inches="tight")
     plt.show()
 
-    fig2, ax2 = plt.subplots(figsize=(7, 6))
+    # after (Fair Clustering with Highlights)
+    fig2, ax2 = plt.subplots(figsize=(8, 6))
+
     sns.scatterplot(
-        data=df_jit, x=lon_col, y=lat_col, hue=group_col, palette="Set2",
-        alpha=0.4, s=14, legend="full", ax=ax2,
+        data=df_vis[~df_vis["Changed"]], x=lon_col, y=lat_col, hue="Fair_Cluster", palette="tab10",
+        alpha=0.2, s=15, legend=False, ax=ax2
     )
+
+    if df_vis["Changed"].any():
+        sns.scatterplot(
+            data=df_vis[df_vis["Changed"]], x=lon_col, y=lat_col, hue="Fair_Cluster", palette="tab10",
+            alpha=1.0, s=40, edgecolor="red", linewidth=1.5, marker="o", legend="full", ax=ax2
+        )
+
+    new_centers = calculate_post_fairness_centers(fair_result.X, fair_result.labels, fair_result.k)
     ax2.scatter(
-        result.centers[:, 1], result.centers[:, 0],
-        c="black", marker="X", s=150, zorder=5, label="Centers",
+        new_centers[:, 1], new_centers[:, 0],
+        c="red", marker="X", s=150, zorder=5, label="New Fair Centers"
     )
-    ax2.set_title(f"By Demographic Group — {result.algorithm}")
+
+    ax2.set_title(
+        f"After: {fair_result.algorithm.capitalize()} Fair Clustering\n(Red outlines indicate reassigned points)")
     ax2.set_xlabel("Longitude (scaled)")
     ax2.set_ylabel("Latitude (scaled)")
+
     handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles, labels, title=group_col, fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left")
+    ax2.legend(handles, labels, title="Cluster", bbox_to_anchor=(1.01, 1), loc="upper left")
     ax2.grid(True, linestyle="--", alpha=0.4)
     fig2.tight_layout()
-    if save_path:
-        fig2.savefig(f"{save_path}_group.png", dpi=150, bbox_inches="tight")
-    plt.show()
 
-    # --- Plot 3: Group Composition Stacked Bar ---
-    fig3, ax3 = plt.subplots(figsize=(7, 6))
-    w_col = weight_col if (weight_col and weight_col in df_vis.columns) else None
-    if w_col:
-        comp = df_vis.groupby(["_Cluster", group_col])[w_col].sum().unstack(fill_value=0)
-    else:
-        comp = df_vis.groupby(["_Cluster", group_col]).size().unstack(fill_value=0)
-
-    comp.div(comp.sum(axis=1), axis=0).plot(
-        kind="bar", stacked=True, ax=ax3, colormap="Set2", legend=True
-    )
-    ax3.set_title(f"Group Composition per Cluster — {result.algorithm}")
-    ax3.set_xlabel("Cluster ID")
-    ax3.set_ylabel("Fraction")
-    ax3.legend(title=group_col, bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=7)
-    ax3.tick_params(axis="x", rotation=0)
-    fig3.tight_layout()
     if save_path:
-        fig3.savefig(f"{save_path}_composition.png", dpi=150, bbox_inches="tight")
+        fig2.savefig(f"{save_path}_after_highlighted.png", dpi=150, bbox_inches="tight")
     plt.show()
 
 
