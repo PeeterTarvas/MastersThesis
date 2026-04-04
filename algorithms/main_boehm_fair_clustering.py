@@ -183,8 +183,6 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        csv_loader.LOAD_DTYPES,
-        chunk_size=10_000,
         max_rows=10_000,
     )
 

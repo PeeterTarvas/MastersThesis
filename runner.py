@@ -17,7 +17,7 @@ class TrialOutput(NamedTuple):
     timing: dict[str, float]
 
 
-def run_trials(chunk_size, max_rows, algorithm_fn: Callable[..., Any],
+def run_trials(max_rows, algorithm_fn: Callable[..., Any],
                 result_builder: Callable[[Any, int], TrialOutput], n_runs: int, **kwargs):
 
     fair_costs: list[float] = []
@@ -34,12 +34,14 @@ def run_trials(chunk_size, max_rows, algorithm_fn: Callable[..., Any],
         df = csv_loader.load_csv_chunked(
             "us_census_puma_data.csv",
             csv_loader.LOAD_COLS,
-            csv_loader.LOAD_DTYPES,
-            chunk_size=chunk_size,
             max_rows=max_rows,
             random_seed=seed
         )
+        print(f"DEBUG: Shape after load_csv_chunked: {df.shape}")
 
+        # If df is empty here, the problem is in load_csv_chunked or the CSV file itself.
+        if df.empty:
+            raise ValueError("Dataframe is empty immediately after loading. Check your CSV and load_csv_chunked logic.")
         df = csv_loader.preprocess_dataset(df)
 
         raw = algorithm_fn(df, random_seed=seed, **kwargs)
@@ -308,29 +310,55 @@ def build_boehm_result(raw) -> TrialOutput:
 
 if __name__ == "__main__":
 
-    CHUNK_SIZE = 10_00
-    ROW_SIZE = 10_00
+    ROW_SIZE = 10_000
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K = 4
+    K = 10
     N_RUNS = 5
+    ALPHA = 0.05
 
+    #print("\n" + "="*60)
+    #print("  RUNNING BÖHM ET AL. (Exact Balance / Assignment)")
+    #print("="*60)
+    #boehm_result, boehm_summary = run_trials(
+    #    max_rows=ROW_SIZE,
+    #    algorithm_fn=boehm_fc,
+    #    result_builder=build_boehm_result,
+    #    n_runs=N_RUNS,
+    #    # Böhm specific kwargs:
+    #    feature_cols=FEATURE_COLS,
+    #    protected_group_col=PROTECTED_COL,
+    #    k=K,
+    #    kmedian_trials=3,
+    #    kmedian_max_iter=30
+    #)
 
-    print("\n" + "="*60)
-    print("  RUNNING BÖHM ET AL. (Exact Balance / Assignment)")
-    print("="*60)
-    boehm_result, boehm_summary = run_trials(
-        chunk_size=CHUNK_SIZE,
+    print("  RUNNING BERCEA ET AL. (Proportional Bounds)")
+    print("=" * 60)
+    bera_result, bera_summary = run_trials(
         max_rows=ROW_SIZE,
-        algorithm_fn=boehm_fc,
-        result_builder=build_boehm_result,
+        algorithm_fn=bera_fc,
+        result_builder=build_bera_result,
         n_runs=N_RUNS,
-        # Böhm specific kwargs:
+        # Bera specific kwargs:
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
-        k=K,
-        kmedian_trials=3,
-        kmedian_max_iter=30
-        # Note: No alpha or weight_col for Böhm
+        k_centers=K,
+        alpha=ALPHA,
+        weight_col=None
     )
+
+    #print("  RUNNING BERA ET AL. (Iterative Rounding)")
+    #print("=" * 60)
+    #bercea_result, bercea_summary = run_trials(
+    #    algorithm_fn=bercea_fc,
+    #    result_builder=build_bercea_result,
+    #    n_runs=N_RUNS,
+    #    # Bercea specific kwargs:
+    #    feature_cols=FEATURE_COLS,
+    #    protected_group_col=PROTECTED_COL,
+    #    k_cluster=K,
+    #    alpha=ALPHA,
+    #    weight_col=None
+    #)

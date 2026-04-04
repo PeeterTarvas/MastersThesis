@@ -77,7 +77,7 @@ def solve_fair_lp(
         A_eq=a_equality.tocsc(),
         b_eq=b_equality,
         bounds=[(0.0, 1.0)] * n_vars,
-        method='highs',
+        method='highs-ds',
         options={'disp': False, 'presolve': True},
     )
 
@@ -162,8 +162,8 @@ def iterative_rounding(
                 if not fair_active[group_code_idx, col]:
                     continue
                 group_weighted_mass_col = group_weighted_mass[group_code_idx, col]
-                low = max(0.0, np.floor(group_weighted_mass_col + 1e-9))
-                high = np.ceil(group_weighted_mass_col - 1e-9)
+                low = max(0.0, np.floor(group_weighted_mass_col - 1))
+                high = np.ceil(group_weighted_mass_col + 1)
                 coeffs = {
                     quick_lookup_idx[(nr_unassigned_idx, col)]: weights[still_unassigned[nr_unassigned_idx]]
                     for nr_unassigned_idx in range(nr_unassigned) if group_codes[still_unassigned[nr_unassigned_idx]] == group_code_idx
@@ -380,9 +380,8 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        csv_loader.LOAD_DTYPES,
-        chunk_size=50_000,
-        max_rows=50_000,
+        max_rows=10_000,
+        random_seed=42
     )
     ##coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
 
@@ -411,7 +410,7 @@ if __name__ == "__main__":
 
     FEATURE_COLS  = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K             = 4
+    K             = 5
     ALPHA         = 0.02
 
     (unfair_centers, unfair_labels, unfair_cost,
@@ -453,13 +452,13 @@ if __name__ == "__main__":
 
     summary = evaluate(fair_result, unfair_result=unfair_result)
 
-    #udit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
+    audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
     plot_execution_times(fair_result, timing, title="Bera et al. — Run Time")
-    #plot_spatial_clusters(preprocessed_df, fair_result,
-    #                      feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
-    #                      weight_col=None)
-    #plot_cluster_pof(fair_result, [summary])
-    #plot_pof_comparison(fair_result, [summary])
-    #plot_group_pof(fair_result, [summary])
-    #plot_cost_breakdown(fair_result, [summary])
+    plot_spatial_clusters(preprocessed_df, fair_result,
+                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
+                          weight_col=None)
+    plot_cluster_pof(fair_result, [summary])
+    plot_pof_comparison(fair_result, [summary])
+    plot_group_pof(fair_result, [summary])
+    plot_cost_breakdown(fair_result, [summary])

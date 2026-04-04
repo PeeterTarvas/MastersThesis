@@ -4,6 +4,7 @@ import gc
 import time
 from pathlib import Path
 from typing import Optional, Sequence
+import polars as pl
 
 from sklearn.preprocessing import MinMaxScaler
 
@@ -18,12 +19,15 @@ LOAD_DTYPES = {
     "RAC1P": "Int16",
 }
 
+_POLARS_SCHEMA = {
+    "Longitude": pl.Float32, "Latitude": pl.Float32, "PINCP": pl.Float32,
+    "AGEP":      pl.Int16,   "SEX":      pl.Int8,    "RAC1P": pl.Int16,
+}
+
 
 def load_csv_chunked(
         csv_path: str,
         cols: Sequence[str] = LOAD_COLS,
-        dtypes: dict = LOAD_DTYPES,
-        chunk_size: int = 200_000,
         max_rows: Optional[int] = None,
         random_seed: Optional[int] = None,
 ) -> pd.DataFrame:
@@ -53,85 +57,23 @@ def load_csv_chunked(
     if not path.exists():
         raise FileNotFoundError(f"Dataset not found: {csv_path}")
 
-    do_random = (random_seed is not None) and (max_rows is not None)
-    rng = np.random.default_rng(random_seed) if do_random else None
-
-    reservoir: Optional[pd.DataFrame] = None
-    chunks: list[pd.DataFrame] = []   # used only in deterministic path
-    total_clean = 0
-    t0 = time.time()
-
-    reader = pd.read_csv(
-        csv_path,
-        usecols=cols,
-        dtype=dtypes,
-        chunksize=chunk_size,
-        engine="c",
+    schema = {c: _POLARS_SCHEMA[c] for c in cols if c in _POLARS_SCHEMA}
+    lf = (
+        pl.scan_csv(csv_path, schema_overrides=schema)
+        .select(list(cols))
+        .drop_nulls()
     )
 
-    for i, chunk in enumerate(reader):
-        # ---- clean -------------------------------------------------------
-        chunk = chunk.dropna(subset=cols)
-        if "Longitude" in chunk.columns:
-            chunk = chunk[(chunk["Longitude"] >= -180) & (chunk["Longitude"] <= 180)]
-        if "Latitude" in chunk.columns:
-            chunk = chunk[(chunk["Latitude"] >= -90)  & (chunk["Latitude"] <= 90)]
-        if "PINCP" in chunk.columns:
-            chunk = chunk[chunk["PINCP"] >= 0]
-        if len(chunk) == 0:
-            continue
+    df_pl = lf.collect()
+    total_clean = len(df_pl)
 
-        total_clean += len(chunk)
-
-        # ---- random reservoir sampling -----------------------------------
-        if do_random:
-            chunk = chunk.copy()                        # avoid SettingWithCopyWarning
-            chunk["_w"] = rng.random(size=len(chunk))  # uniform weight per row
-            if reservoir is None:
-                reservoir = chunk
-            else:
-                reservoir = pd.concat([reservoir, chunk], ignore_index=True)
-            if len(reservoir) > max_rows:
-                reservoir = reservoir.nsmallest(max_rows, "_w")
-
-        # ---- deterministic path: take first max_rows rows ----------------
-        else:
-            if max_rows is not None:
-                remaining = max_rows - sum(len(c) for c in chunks)
-                if remaining <= 0:
-                    break
-                if len(chunk) > remaining:
-                    chunk = chunk.iloc[:remaining]
-            chunks.append(chunk)
-
-        print(
-            f"  Chunk {i+1:>3}: {total_clean:>10,} clean rows  ({time.time()-t0:.1f}s)",
-            end="\r",
-        )
-
-    print(f"\n  Done: {total_clean:,} clean rows in {time.time()-t0:.1f}s")
-
-    # ---- assemble result -------------------------------------------------
-    if do_random:
-        if reservoir is None:
-            return pd.DataFrame(columns=list(cols))
-        df = reservoir.drop(columns=["_w"])
-        # Shuffle to remove the weight-sorted order nsmallest leaves behind
-        df = df.sample(frac=1.0, random_state=int(rng.integers(2**31))).reset_index(drop=True)
-    else:
-        if not chunks:
-            return pd.DataFrame(columns=list(cols))
-        df = pd.concat(chunks, ignore_index=True)
-        del chunks
-        gc.collect()
-
-    print(f"  Final sample: {len(df):,} rows")
+    rng = np.random.default_rng(random_seed)
+    weights = rng.random(total_clean)
+    idx = np.argpartition(weights, max_rows)[:max_rows]
+    idx = idx[np.argsort(weights[idx])]
+    df_pl = df_pl[rng.permutation(idx)]
+    df = df_pl.to_pandas()
     return df
-
-
-
-
-
 
 
 def preprocess_dataset(df: pd.DataFrame):
@@ -146,10 +88,10 @@ def preprocess_dataset(df: pd.DataFrame):
 
     print("Generating unique 'groups' for intersectional fairness...")
     df_core['GROUP_ID'] = (
-        ##df_core['RAC1P'].astype(str) + "_"# +
-        ##df_core['SEX'].astype(str) + "_" +
-            df_core['AGE_BIN'].astype(str) + "_"  # +
-        ##df_core['INC_BIN'].astype(str)
+        #df_core['RAC1P'].astype(str) + "_"# +
+        #df_core['SEX'].astype(str) + "_" +
+        #df_core['AGE_BIN'].astype(str) + "_"  # +
+        df_core['INC_BIN'].astype(str)
     )
 
     print("3. Extracting and scaling spatial coordinates...")
