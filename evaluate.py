@@ -387,7 +387,6 @@ def plot_execution_times(
         save_path: Optional[str] = None
 ) -> None:
     """Bar chart of per-step times."""
-
     if not save_path:
         save_dir = Path("results") / result.algorithm
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -425,8 +424,7 @@ def plot_spatial_clusters(
         save_path: Optional[str] = None
 ) -> None:
     """
-    Plots the 'Before' (unfair) and 'After' (fair) clustering results in separate figures.
-    Highlights the points that were reassigned to satisfy fairness bounds.
+    plot before and after on the fair and unfair results. Also higlight changes on the map
     """
     if not save_path:
         save_dir = Path("results") / fair_result.algorithm
