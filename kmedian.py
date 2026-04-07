@@ -1,46 +1,42 @@
 import numpy as np
 from typing import Optional
 
-import matplotlib.pyplot as plt
-import pandas as pd
-from fast_kmedian import fast_kmedian
 
-import csv_loader
-from coreset import compute_fair_coreset
 
 def l1_distance(a: np.ndarray, b: np.ndarray) -> float:
     """Manhattan (L1) distance between two points."""
     return float(np.sum(np.abs(a - b)))
 
 
-def pairwise_l1(X: np.ndarray, centers: np.ndarray) -> np.ndarray:
+def pairwise_l1(x: np.ndarray, centers: np.ndarray) -> np.ndarray:
     """
-    Compute pairwise L1 distances between all points in X and all centers.
+    compute pairwise L1 distances between all points in x and all centers.
+    Returns shape (n, k).
     """
-    return np.sum(np.abs(X[:, np.newaxis, :] - centers[np.newaxis, :, :]), axis=2)
+    return np.sum(np.abs(x[:, np.newaxis, :] - centers[np.newaxis, :, :]), axis=2)
 
 
-def assignment_cost(X: np.ndarray, centers: np.ndarray, _weights: Optional[np.ndarray] = None) -> tuple[np.ndarray, float]:
-    """
-    Assign each point to its nearest center and return total L1 cost.
-
-    """
+def assignment_cost(
+        x: np.ndarray, centers: np.ndarray, _weights: Optional[np.ndarray] = None
+) -> tuple[np.ndarray, float]:
+    """assign each point to its nearest center and return total L1 cost."""
     if _weights is None:
-        _weights = np.ones(len(X))
-    D = pairwise_l1(X, centers)
+        _weights = np.ones(len(x))
+    D = pairwise_l1(x, centers)
     labels = np.argmin(D, axis=1)
-    min_dists = D[np.arange(len(X)), labels]
+    min_dists = D[np.arange(len(x)), labels]
     cost = float(np.dot(_weights, min_dists))
     return labels, cost
 
+
 def kmedian_plus_plus_seed(
-    x: np.ndarray,
-    k: int,
-    rng: np.random.Generator,
-    _weights: Optional[np.ndarray] = None,
+        x: np.ndarray,
+        k: int,
+        rng: np.random.Generator,
+        _weights: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
-    Probabilistic seeding: choose first center uniformly at random, then
+    probabilistic seeding: choose first center uniformly at random, then
     each subsequent center with probability proportional to its L1 distance
     to the nearest already-chosen center.
     """
@@ -69,151 +65,88 @@ def kmedian_plus_plus_seed(
 
     return x[chosen_indices].copy()
 
+
+def _weighted_median_1d(values: np.ndarray, weights: np.ndarray) -> float:
+    order = np.argsort(values)
+    sorted_v = values[order]
+    cum_w = np.cumsum(weights[order])
+    half = cum_w[-1] / 2.0
+    idx = np.searchsorted(cum_w, half)
+    return float(sorted_v[min(idx, len(sorted_v) - 1)])
+
+
 def local_search_kmedian(
-        X: np.ndarray,
+        x: np.ndarray,
         k: int,
         _weights: np.ndarray,
         init_centers: np.ndarray,
         max_iter: int = 10,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    Optimized single-swap local search for k-median
+    lloyd's iteration for weighted k-median under L1 distance.
+    each centre is relocated to the coordinate-wise weighted median of
+    its cluster
+
     """
-    n, d = X.shape
+    n, d = x.shape
     centers = init_centers.copy()
 
-    # Pre-calculate the initial distance matrix (n x k)
-    D = pairwise_l1(X, centers)
-    labels = np.argmin(D, axis=1)
-    min_dists = D[np.arange(n), labels]
-    cost = float(np.dot(_weights, min_dists))
-
-    # Fast lookup to prevent swapping a center with itself
-    center_set = set(map(tuple, centers.tolist()))
-
-    for iteration in range(max_iter):
-        best_gain = 0.0
-        best_swap = None
-
-        for ci in range(k):
-            # Calculate the distance to the closest center IF center `ci` is removed
-            if k == 1:
-                min_dists_without_ci = np.full(n, np.inf)
-            else:
-                D_other = np.delete(D, ci, axis=1)
-                min_dists_without_ci = D_other.min(axis=1)
-
-            for xi in range(n):
-                candidate = X[xi]
-                if tuple(candidate.tolist()) in center_set:
-                    continue
-
-                # Instead of computing the full (n x k) matrix, just compute
-                # the distance from all points to the *new* candidate center
-                dist_to_candidate = np.sum(np.abs(X - candidate), axis=1)
-
-                # The new shortest distance for each point is the minimum of
-                # the distance to the new candidate OR the remaining centers
-                new_min_dists = np.minimum(min_dists_without_ci, dist_to_candidate)
-
-                trial_cost = float(np.dot(_weights, new_min_dists))
-                gain = cost - trial_cost
-
-                if gain > best_gain:
-                    best_gain = gain
-                    best_swap = (ci, xi)
-
-        if best_swap is None:
-            break  # Local optimum reached
-
-        ci, xi = best_swap
-
-        # Update the centers and our tracking sets
-        center_set.discard(tuple(centers[ci].tolist()))
-        centers[ci] = X[xi].copy()
-        center_set.add(tuple(centers[ci].tolist()))
-
-        # Update our running distance matrix and costs
-        D[:, ci] = np.sum(np.abs(X - centers[ci]), axis=1)
+    for _it in range(max_iter):
+        D = pairwise_l1(x, centers)
         labels = np.argmin(D, axis=1)
-        min_dists = D[np.arange(n), labels]
-        cost = float(np.dot(_weights, min_dists))
+
+        new_centers = centers.copy()
+        for j in range(k):
+            mask = labels == j
+            if mask.sum() == 0:
+                continue
+            cX = x[mask]
+            cW = _weights[mask]
+            for dim in range(d):
+                new_centers[j, dim] = _weighted_median_1d(cX[:, dim], cW)
+
+        if np.allclose(centers, new_centers, atol=1e-12):
+            break
+        centers = new_centers
+
+    D = pairwise_l1(x, centers)
+    labels = np.argmin(D, axis=1)
+    cost = float(np.dot(_weights, D[np.arange(n), labels]))
 
     return centers, labels, cost
 
 
-
 def kmedian(
-    X: np.ndarray,
-    k: int,
-    _weights: Optional[np.ndarray] = None,
-    n_trials: int = 5,
-    max_iter: int = 10,
-    random_seed: Optional[int] = None,
+        x: np.ndarray,
+        k: int,
+        _weights: Optional[np.ndarray] = None,
+        n_trials: int = 5,
+        max_iter: int = 10,
+        random_seed: Optional[int] = None,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    Vanilla k-median clustering via k-median++ seeding + single-swap local search.
-
-    Runs `n_trials` independent restarts and returns the best result.
+    k-median clustering via k-median++ seeding + Lloyd's iteration.
+    n_trials independent restarts and returns the best result.
     """
-    X = np.asarray(X, dtype=float)
+    x = np.asarray(x, dtype=float)
 
     if _weights is not None:
         _weights = np.asarray(_weights, dtype=float)
     else:
-        _weights = np.ones(len(X))
+        _weights = np.ones(len(x))
 
     rng = np.random.default_rng(random_seed)
 
     best_centers, best_labels, best_cost = None, None, np.inf
 
     for trial in range(n_trials):
-        init_centers = kmedian_plus_plus_seed(X, k, rng, _weights)
-        #centers, labels, cost = fast_kmedian.local_search_kmedian(
-        #    X, k,_weights, init_centers, max_iter
-        #)
-        centers, labels, cost = local_search_kmedian(X, k, _weights, init_centers, max_iter)
+        init_centers = kmedian_plus_plus_seed(x, k, rng, _weights)
+        centers, labels, cost = local_search_kmedian(
+            x, k, _weights, init_centers, max_iter
+        )
         if cost < best_cost:
             best_centers = centers
             best_labels = labels
             best_cost = cost
 
     return best_centers, best_labels, best_cost
-
-
-if __name__ == "__main__":
-    df: pd.DataFrame = csv_loader.load_csv_chunked("us_census_puma_data.csv",
-                                                   csv_loader.LOAD_COLS, csv_loader.LOAD_DTYPES,
-                                                   10_0, 10_0)
-
-    coreset_df = compute_fair_coreset(df, n_locations=300, random_seed=42)
-
-    k = 30
-    X = coreset_df[['Lat_Scaled', 'Lon_Scaled']].values
-    w = coreset_df['Weight'].values.astype(float)
-    centers, labels, cost = kmedian(X, k, w)
-    result_df = coreset_df.copy()
-    result_df['Cluster'] = labels
-
-    print(f"[Baseline k-median] k={k}, weighted cost = {cost:,.2f}")
-
-    plt.figure(figsize=(10, 6), facecolor='white')
-    ax = plt.gca()
-    ax.set_facecolor('white')
-    scatter = ax.scatter(
-        result_df['Longitude'],
-        result_df['Latitude'],
-        c=result_df['Cluster'],
-        cmap='tab20',
-        alpha=0.4,
-        s=result_df['Weight'] / result_df['Weight'].max() * 10,  # size ∝ weight
-        linewidths=0,
-    )
-    plt.colorbar(scatter, ax=ax, label='Cluster')
-    plt.title(f'k-Median Clustering (k={k})', color='black')
-    plt.xlabel('Longitude', color='black')
-    plt.ylabel('Latitude', color='black')
-    plt.tick_params(colors='black')
-    plt.tight_layout()
-    plt.savefig('kmedian_clusters.png', dpi=150)
-    plt.show()

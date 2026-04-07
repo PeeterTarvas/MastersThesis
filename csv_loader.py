@@ -81,7 +81,7 @@ def preprocess_dataset(df: pd.DataFrame):
     df_core['AGE_BIN'] = pd.cut(df_core['AGEP'], bins=[0, 18, 35, 55, 120],
                                 labels=['Youth', 'YoungAdult', 'Adult', 'Senior'])
 
-    df_core['INC_BIN'] = pd.cut(df_core['PINCP'], bins=[-np.inf, 35000, 75000, np.inf], labels=['Low', 'Med', 'High'])
+    df_core['INC_BIN'] = pd.cut(df_core['PINCP'], bins=[-np.inf, 15_000, 50_000, 150_000, np.inf], labels=['Low', 'Mid-Low',  'Mid-High', 'High'])
 
     df_core['AGE_BIN'] = df_core['AGE_BIN'].cat.add_categories('Unknown').fillna('Unknown')
     df_core['INC_BIN'] = df_core['INC_BIN'].cat.add_categories('Unknown').fillna('Unknown')
@@ -90,8 +90,8 @@ def preprocess_dataset(df: pd.DataFrame):
     df_core['GROUP_ID'] = (
         #df_core['RAC1P'].astype(str) + "_"# +
         #df_core['SEX'].astype(str) + "_" +
-        #df_core['AGE_BIN'].astype(str) + "_"  # +
-        df_core['INC_BIN'].astype(str)
+        df_core['AGE_BIN'].astype(str) + "_"
+        #df_core['INC_BIN'].astype(str)
     )
 
     print("3. Extracting and scaling spatial coordinates...")

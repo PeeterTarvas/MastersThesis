@@ -455,9 +455,8 @@ if __name__ == "__main__":
     audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
 
     plot_execution_times(fair_result, timing, title="Bera et al. — Run Time")
-    plot_spatial_clusters(preprocessed_df, fair_result,
-                          feature_cols=FEATURE_COLS, group_col=PROTECTED_COL,
-                          weight_col=None)
+    plot_spatial_clusters(preprocessed_df, fair_result, unfair_result,
+                          feature_cols=FEATURE_COLS)
     plot_cluster_pof(fair_result, [summary])
     plot_pof_comparison(fair_result, [summary])
     plot_group_pof(fair_result, [summary])

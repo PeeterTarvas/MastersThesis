@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 import warnings
-from typing import Optional, Any
 
 import numpy as np
 import pandas as pd

@@ -6,7 +6,7 @@ import pandas as pd
 import csv_loader
 from evaluate import ClusteringResult, make_result, compute_pof, compute_cluster_costs, \
     compute_cluster_pof
-from algorithms.main_boehm_fair_clustering import fair_clustering as bercea_fc
+from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
 
