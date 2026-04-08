@@ -62,7 +62,7 @@ def boehm_fair_clustering(
         # to store this trials assignments back to original
         trial_labels = np.full(total_points, -1, dtype=np.int32)
         centers, base_labels, _ = kmedian(
-            X=x_groups[baseline_color],
+            x=x_groups[baseline_color],
             k=k_centers,
             n_trials=n_trials,
             max_iter=max_iter,
@@ -146,7 +146,7 @@ def fair_clustering(
 
     t0 = time.perf_counter()
     unfair_center, unfair_label, unfair_cost = kmedian(
-        X=x,
+        x=x,
         k=k,
         n_trials=kmedian_trials,
         max_iter=kmedian_max_iter,
@@ -183,22 +183,22 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        max_rows=10_000,
+        max_rows=100_000,
     )
 
     df_processed = csv_loader.preprocess_dataset(df)
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K = 4
+    K = 10
 
     (fair_centers, fair_labels, fair_cost, timing, unfair_centers,
      unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced) = fair_clustering(
         df_processed,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
-        k=5,
-        kmedian_trials=3,
+        k=K,
+        kmedian_trials=5,
         kmedian_max_iter=30,
         random_seed=42,
     )
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     audit_fairness_exact_balance(fair_result)
 
     plot_execution_times(fair_result, timing, title="Essential k-Median — Run Time")
-    plot_spatial_clusters(df_balanced, fair_result, feature_cols=FEATURE_COLS, group_col=PROTECTED_COL, weight_col=None)
+    plot_spatial_clusters(df_balanced, fair_result, unfair_result, feature_cols=FEATURE_COLS)
     plot_cluster_pof(fair_result, [summary])
     plot_pof_comparison(fair_result, [summary])
     plot_group_pof(fair_result, [summary])

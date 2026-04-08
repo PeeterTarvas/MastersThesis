@@ -380,7 +380,7 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        max_rows=10_000,
+        max_rows=100_000,
         random_seed=42
     )
     ##coreset_df = compute_fair_coreset(df_raw, n_locations=300, random_seed=42)
@@ -410,7 +410,7 @@ if __name__ == "__main__":
 
     FEATURE_COLS  = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K             = 5
+    K             = 50
     ALPHA         = 0.02
 
     (unfair_centers, unfair_labels, unfair_cost,
