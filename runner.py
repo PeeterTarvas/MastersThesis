@@ -18,7 +18,7 @@ class TrialOutput(NamedTuple):
 
 
 def run_trials(max_rows, algorithm_fn: Callable[..., Any],
-                result_builder: Callable[[Any, int], TrialOutput], n_runs: int, **kwargs):
+                result_builder: Callable[[Any, int], TrialOutput], group_id_features: list[str], n_runs: int, **kwargs):
 
     fair_costs: list[float] = []
     unfair_costs: list[float] = []
@@ -32,7 +32,7 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         seed = 42 + run_id
 
         df = csv_loader.load_csv_chunked(
-            "us_census_puma_data.csv",
+            "../us_census_puma_data.csv",
             csv_loader.LOAD_COLS,
             max_rows=max_rows,
             random_seed=seed
@@ -42,7 +42,7 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         # If df is empty here, the problem is in load_csv_chunked or the CSV file itself.
         if df.empty:
             raise ValueError("Dataframe is empty immediately after loading. Check your CSV and load_csv_chunked logic.")
-        df = csv_loader.preprocess_dataset(df)
+        df = csv_loader.preprocess_dataset(df, group_id_features)
 
         raw = algorithm_fn(df, random_seed=seed, **kwargs)
         trial: TrialOutput = result_builder(raw)
@@ -99,7 +99,6 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         timing=rep_trial_timing,
     )
 
-    # per cluster results
     per_cluster_fair_costs: dict[int, list[float]] = compute_cluster_costs(result)
     per_cluster_unfair_costs: dict[int, list[float]] = compute_cluster_costs(unfair_result)
     cluster_pof = compute_cluster_pof(result, unfair_result)
@@ -107,8 +106,6 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
     valid_fair_cluster_cost = [v for v in per_cluster_fair_costs.values() if v != float('inf')] if per_cluster_fair_costs else []
     valid_unfair_cluster_cost = [v for v in per_cluster_unfair_costs.values() if v != float('inf')] if per_cluster_unfair_costs else []
 
-    # have to ask supervisor what to look for here mby, not sure what to measure/how
-    # mby just take the median result as a specific example?
     mean_fair_group_fair = float(np.mean(valid_fair_cluster_cost))
     std_fair_group_fair = float(np.std(valid_fair_cluster_cost))
 
@@ -315,8 +312,9 @@ if __name__ == "__main__":
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
-    N_RUNS = 5
+    N_RUNS = 10
     ALPHA = 0.05
+    GROUP_ID_FEATURES = ['RAC1P', 'SEX', 'AGE_BIN', 'INC_BIN']
 
     #print("\n" + "="*60)
     #print("  RUNNING BÖHM ET AL. (Exact Balance / Assignment)")
@@ -340,6 +338,7 @@ if __name__ == "__main__":
         max_rows=ROW_SIZE,
         algorithm_fn=bera_fc,
         result_builder=build_bera_result,
+        group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
         # Bera specific kwargs:
         feature_cols=FEATURE_COLS,
@@ -349,16 +348,17 @@ if __name__ == "__main__":
         weight_col=None
     )
 
-    #print("  RUNNING BERA ET AL. (Iterative Rounding)")
-    #print("=" * 60)
-    #bercea_result, bercea_summary = run_trials(
-    #    algorithm_fn=bercea_fc,
-    #    result_builder=build_bercea_result,
-    #    n_runs=N_RUNS,
-    #    # Bercea specific kwargs:
-    #    feature_cols=FEATURE_COLS,
-    #    protected_group_col=PROTECTED_COL,
-    #    k_cluster=K,
-    #    alpha=ALPHA,
-    #    weight_col=None
-    #)
+    print("  RUNNING BERA ET AL. (Iterative Rounding)")
+    print("=" * 60)
+    bercea_result, bercea_summary = run_trials(
+        algorithm_fn=bercea_fc,
+        result_builder=build_bercea_result,
+        group_id_features=GROUP_ID_FEATURES,
+        n_runs=N_RUNS,
+        # Bercea specific kwargs:
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k_cluster=K,
+        alpha=ALPHA,
+        weight_col=None
+    )

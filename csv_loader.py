@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-import gc
-import time
 from pathlib import Path
 from typing import Optional, Sequence
 import polars as pl
@@ -76,23 +74,34 @@ def load_csv_chunked(
     return df
 
 
-def preprocess_dataset(df: pd.DataFrame):
+GROUP_ID_FEATURES = ['RAC1P', 'SEX', 'AGE_BIN', 'INC_BIN']
+
+def merge_race_6(r):
+    if r == 1: return 'White'
+    elif r == 2: return 'Black'
+    elif r == 6: return 'Asian'
+    elif r in [3, 4, 5]: return 'Native/AI'
+    elif r == 8: return 'Other'
+    elif r in [7, 9]: return 'Multi/PI'
+    else: return 'Other'
+
+def preprocess_dataset(df: pd.DataFrame, group_id_features: list[str]):
     df_core = df.copy()
-    df_core['AGE_BIN'] = pd.cut(df_core['AGEP'], bins=[0, 18, 35, 55, 120],
-                                labels=['Youth', 'YoungAdult', 'Adult', 'Senior'])
+    age_bins = [0, 25, 45, 65, 98]
+    age_labels = ['Youth (0-24)', 'Young Adult (25-44)', 'Adult (45-64)', 'Senior (65+)']
+    df_core['AGE_BIN'] = pd.cut(df_core['AGEP'], bins=age_bins, labels=age_labels, right=False)
 
     df_core['INC_BIN'] = pd.cut(df_core['PINCP'], bins=[-np.inf, 15_000, 50_000, 150_000, np.inf], labels=['Low', 'Mid-Low',  'Mid-High', 'High'])
 
     df_core['AGE_BIN'] = df_core['AGE_BIN'].cat.add_categories('Unknown').fillna('Unknown')
     df_core['INC_BIN'] = df_core['INC_BIN'].cat.add_categories('Unknown').fillna('Unknown')
 
+    df_core['RACE_BINARY'] = df_core['RAC1P'].apply(lambda x: 'White' if x == 1 else 'Non-White')
+    df_core['RACE_6'] = df_core['RAC1P'].apply(merge_race_6)
+
     print("Generating unique 'groups' for intersectional fairness...")
-    df_core['GROUP_ID'] = (
-        df_core['RAC1P'].astype(str) + "_"# +
-        #df_core['SEX'].astype(str) + "_" +
-        #df_core['AGE_BIN'].astype(str) + "_"
-        #df_core['INC_BIN'].astype(str)
-    )
+
+    df_core['GROUP_ID'] = df_core[group_id_features].astype(str).agg('_'.join, axis=1)
 
     print("3. Extracting and scaling spatial coordinates...")
     scaler = MinMaxScaler()
