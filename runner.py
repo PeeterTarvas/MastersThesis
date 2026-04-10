@@ -29,7 +29,7 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
     trial_outputs: list[TrialOutput] = []
 
     for run_id in range(n_runs):
-        seed = 42 + run_id
+        seed = np.random.SeedSequence().entropy % (2 ** 31)
 
         df = csv_loader.load_csv_chunked(
             "../us_census_puma_data.csv",
@@ -185,11 +185,8 @@ def _print_summary(s: dict) -> None:
     print(f"{'='*60}")
 
 
-
 def build_bera_result(raw) -> TrialOutput:
     """
-    Builder for main_bera_fair_clustering.fair_clustering().
-
     Return signature:
         unfair_centers, unfair_labels, unfair_cost,
         fair_labels, fair_cost, timing, x, weights,
@@ -271,13 +268,11 @@ def build_boehm_result(raw) -> TrialOutput:
     Return signature:
         fair_centers, fair_labels, fair_cost, timing,
         unfair_center, unfair_label, unfair_cost,
-        size_pruned_to, x, group_codes, group_names, df_balanced
+        size_pruned_to, x, group_codes, group_names, df_balanced, weights
     """
     (fair_centers, fair_labels, fair_cost, timing,
      unfair_centers, unfair_labels, unfair_cost,
-     size_pruned_to, x, group_codes, group_names, df_balanced) = raw
-
-    weights = np.ones(len(x), dtype=np.float64)
+     size_pruned_to, x, group_codes, group_names, df_balanced, weights) = raw
 
     fair_result = make_result(
         algorithm="boehm",

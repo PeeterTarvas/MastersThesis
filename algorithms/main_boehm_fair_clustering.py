@@ -4,6 +4,7 @@ from typing import Optional, Any
 
 import pandas as pd
 from numpy import ndarray
+from pandas import DataFrame
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
@@ -22,20 +23,22 @@ def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
     return cats.codes.astype(np.int32), list(cats.categories)
 
 
-def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> (pd.DataFrame, int):
+def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> tuple[pd.DataFrame, int]:
     group_counts = df[group_col].value_counts()
     print(group_counts)
     size_for_all_groups = group_counts.min()
     rng = np.random.default_rng(random_seed)
     dfs = []
     for group in group_counts.index:
-        df_for_group = df[df[group_col] == group]
-        if len(df_for_group) > size_for_all_groups:
+        df_for_group = df[df[group_col] == group].copy()
+        original_size = len(df_for_group)
+        if original_size > size_for_all_groups:
             idx = rng.choice(df_for_group.index, size=size_for_all_groups, replace=False)
-            df_for_group = df_for_group.loc[idx]
+            df_for_group = df_for_group.loc[idx].copy()
+        df_for_group['_boehm_weight'] = original_size / size_for_all_groups
         dfs.append(df_for_group)
     balanced_df = pd.concat(dfs).sample(frac=1, random_state=random_seed).reset_index(drop=True)
-    print(f"Pruned to size {size_for_all_groups} df: \n")
+    print(f"Sampled to size {size_for_all_groups} per group (weighted): \n")
     print(balanced_df.head())
     return balanced_df, size_for_all_groups
 
@@ -44,6 +47,7 @@ def boehm_fair_clustering(
         x: np.ndarray,
         group_codes,
         k_centers,
+        weights: np.ndarray,
         n_trials: int = 5,
         max_iter: int = 30,
         random_seed: int = 42
@@ -52,6 +56,7 @@ def boehm_fair_clustering(
     total_points = len(x)
     group_indices = {g: np.where(group_codes == g)[0] for g in unique_groups}
     x_groups = {g: x[group_indices[g]] for g in unique_groups}
+    w_groups = {g: weights[group_indices[g]] for g in unique_groups}
 
     best_overall_cost = np.inf
     best_overall_labels = None
@@ -64,6 +69,7 @@ def boehm_fair_clustering(
         centers, base_labels, _ = kmedian(
             x=x_groups[baseline_color],
             k=k_centers,
+            _weights=w_groups[baseline_color],
             n_trials=n_trials,
             max_iter=max_iter,
             random_seed=random_seed
@@ -74,12 +80,13 @@ def boehm_fair_clustering(
                 continue
             cost_matrix = cdist(x_groups[other_color], x_groups[baseline_color],
                                 metric='cityblock')  # cityblock == manhattan
+            cost_matrix = cost_matrix * w_groups[other_color][:, np.newaxis]
             row_ind, matched_base_ind = linear_sum_assignment(cost_matrix)
             mapped_labels = base_labels[matched_base_ind]
             trial_labels[group_indices[other_color]] = mapped_labels
 
         distance_to_all = pairwise_l1(x, centers)
-        trial_cost = float(distance_to_all[np.arange(total_points), trial_labels].sum())
+        trial_cost = float((weights * distance_to_all[np.arange(total_points), trial_labels]).sum())
         print(f"    -> Cost with baseline {baseline_color}: {trial_cost:,.2f}")
         if trial_cost < best_overall_cost:
             best_overall_cost = trial_cost
@@ -133,12 +140,13 @@ def fair_clustering(
         kmedian_trials: int = 3,
         kmedian_max_iter: int = 30,
         random_seed: Optional[int] = 42
-) -> tuple[ndarray, ndarray, float, dict[Any, Any], ndarray, ndarray, float, Any, Any, ndarray, list, Any]:
+) -> tuple[ndarray, ndarray, float, dict[Any, Any], ndarray, ndarray, float, int, Any, ndarray, list, DataFrame, Any]:
     timing = {}
     t_start = time.perf_counter()
 
     t0 = time.perf_counter()
     df_balanced, size_pruned_to = balance_dataset_for_boehm(df, group_col=protected_group_col, random_seed=42)
+    weights = df_balanced['_boehm_weight'].to_numpy(dtype=np.float64)
     timing["Balance Dataset"] = time.perf_counter() - t0
 
     x = df_balanced[feature_cols].to_numpy(dtype=np.float64)
@@ -148,6 +156,7 @@ def fair_clustering(
     unfair_center, unfair_label, unfair_cost = kmedian(
         x=x,
         k=k,
+        _weights=weights,
         n_trials=kmedian_trials,
         max_iter=kmedian_max_iter,
         random_seed=random_seed
@@ -158,7 +167,9 @@ def fair_clustering(
 
     t0 = time.perf_counter()
     fair_centers, fair_labels, fair_cost = boehm_fair_clustering(x, group_codes,
-                                                                 k_centers=k, n_trials=kmedian_trials,
+                                                                 k_centers=k,
+                                                                 n_trials=kmedian_trials,
+                                                                 weights=weights,
                                                                  max_iter=kmedian_max_iter)
     timing["Böhm Fair Clustering"] = time.perf_counter() - t0
 
@@ -175,7 +186,8 @@ def fair_clustering(
             x,
             group_codes,
             group_names,
-            df_balanced
+            df_balanced,
+            weights
             )
 
 
@@ -193,7 +205,7 @@ if __name__ == "__main__":
     K = 10
 
     (fair_centers, fair_labels, fair_cost, timing, unfair_centers,
-     unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced) = fair_clustering(
+     unfair_labels, unfair_cost, size_pruned_to, x, group_codes, group_names, df_balanced, weights) = fair_clustering(
         df_processed,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
@@ -202,8 +214,6 @@ if __name__ == "__main__":
         kmedian_max_iter=30,
         random_seed=42,
     )
-
-    weights = np.ones(len(x), dtype=np.float64)
 
     fair_result = make_result(
         algorithm="boehm",

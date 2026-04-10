@@ -6,8 +6,9 @@ import matplotlib.ticker as mticker
 from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
+from results_encoder import save_summary
 
-from runner import run_trials, build_bera_result, build_bercea_result
+from runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result
 
 
 def plot_algorithm_pof_comparison(
@@ -95,10 +96,10 @@ def plot_algorithm_pof_comparison(
     print(sep)
 
 if __name__ == "__main__":
-    ROW_SIZE = 100_000
+    ROW_SIZE = 100_0
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
-    GROUP_ID_FEATURES = ["RACE_6"]
+    GROUP_ID_FEATURES = ["RACE_BINARY"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
     N_RUNS = 10
@@ -136,4 +137,26 @@ if __name__ == "__main__":
         weight_col=None
     )
 
-    plot_algorithm_pof_comparison([bera_summary, bercea_summary])
+    print("\n" + "=" * 60)
+    print("  RUNNING BÖHM ET AL. (Weighted Exact Balance)")
+    print("=" * 60)
+    boehm_result, boehm_summary = run_trials(
+        max_rows=ROW_SIZE,
+        algorithm_fn=boehm_fc,
+        result_builder=build_boehm_result,
+        group_id_features=GROUP_ID_FEATURES,
+        n_runs=N_RUNS,
+        # Böhm specific kwargs:
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k=K,
+        kmedian_trials=3,
+        kmedian_max_iter=30
+    )
+
+    save_summary(bera_summary, './bera_summary')
+    save_summary(bercea_summary, './bercea_summary')
+    save_summary(boehm_summary, './boehm_summary')
+
+
+    plot_algorithm_pof_comparison([bera_summary, bercea_summary, boehm_summary])
