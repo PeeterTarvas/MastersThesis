@@ -63,7 +63,7 @@ def plot_runtime(rows: list[dict]):
     ax.legend(fontsize=10)
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
-    fig.savefig("./runtime_by_feature.png", dpi=150, bbox_inches="tight")
+    fig.savefig("evaluation3_runtime_by_feature.png", dpi=150, bbox_inches="tight")
     plt.show()
 
     BERA_PHASES = ["Data Preparation", "Vanilla K-Median", "Solve Initial LP",
@@ -101,7 +101,7 @@ def plot_runtime(rows: list[dict]):
         ax2.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
 
     fig2.tight_layout()
-    fig2.savefig("./runtime_by_feature_phases.png", dpi=150, bbox_inches="tight")
+    fig2.savefig("evaluation3_runtime_by_feature_phases.png", dpi=150, bbox_inches="tight")
     plt.show()
     print("  Saved runtime_by_feature_phases.png")
 
@@ -227,7 +227,7 @@ def plot_pof(rows: list[dict]):
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
 
     fig.tight_layout()
-    fig.savefig("./pof_by_feature.png", dpi=150, bbox_inches="tight")
+    fig.savefig("evaluation3_pof_by_feature.png", dpi=150, bbox_inches="tight")
     plt.show()
     print("  Saved pof_by_feature.png")
 
