@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
@@ -9,11 +7,6 @@ from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
 
 from runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result
 
-
-# ---------------------------------------------------------------------------
-# Phase keys per algorithm (excluding 'Total Time' / 'Total' which is the sum)
-# These must match the timing dict keys produced by each algorithm.
-# ---------------------------------------------------------------------------
 BERA_PHASES = [
     "Data Preparation",
     "Vanilla K-Median",
@@ -50,10 +43,6 @@ _ALG_PALETTE = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Plotting helpers
-# ---------------------------------------------------------------------------
-
 def plot_per_algorithm_phases(
     alg_name: str,
     phase_keys: list[str],
@@ -61,14 +50,13 @@ def plot_per_algorithm_phases(
     sizes: list[int],
     summaries_by_size: list[dict],
 ) -> None:
-    """One figure per algorithm: a line per phase + total, x = dataset size."""
     fig, ax = plt.subplots(figsize=(9, 5.5))
 
     for idx, phase in enumerate(phase_keys):
         means = []
         stds = []
         for s in summaries_by_size:
-            timings_list = s["_timings"]  # list[dict] across runs
+            timings_list = s["_timings"]
             vals = [t.get(phase, 0.0) for t in timings_list]
             means.append(float(np.mean(vals)))
             stds.append(float(np.std(vals, ddof=1) if len(vals) > 1 else 0.0))
@@ -81,7 +69,6 @@ def plot_per_algorithm_phases(
             alpha=0.15, color=color,
         )
 
-    # Total line (dashed)
     total_means = []
     total_stds = []
     for s in summaries_by_size:
@@ -99,7 +86,7 @@ def plot_per_algorithm_phases(
     )
 
     ax.set_xlabel("Dataset size (n)", fontsize=11)
-    ax.set_ylabel("Wall-clock time (s)", fontsize=11)
+    ax.set_ylabel("Runtime (s)", fontsize=11)
     ax.set_title(f"{alg_name} — Per-Phase Scalability", fontsize=13)
     ax.legend(loc="upper left", fontsize=9)
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
@@ -117,7 +104,6 @@ def plot_overall_comparison(
     alg_configs: list[dict],
     sizes: list[int],
 ) -> None:
-    """Combined figure: one line per algorithm showing total time vs n."""
     fig, ax = plt.subplots(figsize=(9, 5.5))
 
     for cfg in alg_configs:
@@ -135,8 +121,8 @@ def plot_overall_comparison(
                      label=name, color=color, linewidth=1.8)
 
     ax.set_xlabel("Dataset size (n)", fontsize=11)
-    ax.set_ylabel("Wall-clock time (s)", fontsize=11)
-    ax.set_title("Total Runtime Scalability — All Algorithms", fontsize=13)
+    ax.set_ylabel("Runtime (s)", fontsize=11)
+    ax.set_title("Total Runtime", fontsize=13)
     ax.legend(loc="upper left", fontsize=10)
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
@@ -153,7 +139,6 @@ def print_scalability_table(
     alg_configs: list[dict],
     sizes: list[int],
 ) -> None:
-    """Print a summary table of average total time per algorithm × size."""
     header = f"{'Algorithm':<22s}" + "".join(f"{'n='+str(n):>14s}" for n in sizes)
     sep = "-" * len(header)
     print(f"\n{sep}\n{header}\n{sep}")
@@ -171,7 +156,6 @@ def print_scalability_table(
         print(row)
     print(sep)
 
-    # Detailed per-phase table for each algorithm
     for cfg in alg_configs:
         name = cfg["name"]
         phases = cfg["phases"]
@@ -262,7 +246,6 @@ if __name__ == "__main__":
         )
         boehm_summaries.append(boehm_s)
 
-    # ---- Per-algorithm phase plots ----
     plot_per_algorithm_phases("Bera", BERA_PHASES, BERA_TOTAL_KEY,
                              SIZES, bera_summaries)
     plot_per_algorithm_phases("Bercea", BERCEA_PHASES, BERCEA_TOTAL_KEY,
@@ -270,7 +253,6 @@ if __name__ == "__main__":
     plot_per_algorithm_phases("Böhm", BOEHM_PHASES, BOEHM_TOTAL_KEY,
                              SIZES, boehm_summaries)
 
-    # ---- Combined overall time plot ----
     alg_configs = [
         {"name": "Bera",   "phases": BERA_PHASES,   "total_key": BERA_TOTAL_KEY,   "summaries_by_size": bera_summaries},
         {"name": "Bercea", "phases": BERCEA_PHASES,  "total_key": BERCEA_TOTAL_KEY, "summaries_by_size": bercea_summaries},
@@ -278,5 +260,4 @@ if __name__ == "__main__":
     ]
     plot_overall_comparison(alg_configs, SIZES)
 
-    # ---- Summary tables ----
     print_scalability_table(alg_configs, SIZES)
