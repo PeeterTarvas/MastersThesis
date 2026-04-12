@@ -27,10 +27,6 @@ BOEHM_PHASES = [
     "Böhm Fair Clustering",
 ]
 
-BERA_TOTAL_KEY = "Total Time"
-BERCEA_TOTAL_KEY = "Total Time"
-BOEHM_TOTAL_KEY = "Total"
-
 _PHASE_PALETTE = [
     "#4C72B0", "#DD8452", "#55A868", "#C44E52",
     "#8172B3", "#937860", "#DA8BC3", "#8C8C8C",
@@ -46,7 +42,6 @@ _ALG_PALETTE = {
 def plot_per_algorithm_phases(
     alg_name: str,
     phase_keys: list[str],
-    total_key: str,
     sizes: list[int],
     summaries_by_size: list[dict],
 ) -> None:
@@ -73,7 +68,7 @@ def plot_per_algorithm_phases(
     total_stds = []
     for s in summaries_by_size:
         timings_list = s["_timings"]
-        vals = [t.get(total_key, 0.0) for t in timings_list]
+        vals = [t.get("Total Time", 0.0) for t in timings_list]
         total_means.append(float(np.mean(vals)))
         total_stds.append(float(np.std(vals, ddof=1) if len(vals) > 1 else 0.0))
     ax.plot(sizes, total_means, marker="s", linestyle="--", linewidth=2,
@@ -94,7 +89,7 @@ def plot_per_algorithm_phases(
     ax.set_xscale("log")
     ax.set_yscale("log")
     fig.tight_layout()
-    fname = f"./scalability_{alg_name.lower().replace(' ', '_')}_phases.png"
+    fname = f"evaluation2_scalability_{alg_name.lower().replace(' ', '_')}_phases.png"
     fig.savefig(fname, dpi=150, bbox_inches="tight")
     plt.show()
     print(f"  Saved {fname}")
@@ -108,12 +103,11 @@ def plot_overall_comparison(
 
     for cfg in alg_configs:
         name = cfg["name"]
-        total_key = cfg["total_key"]
         summaries = cfg["summaries_by_size"]
         means, stds = [], []
         for s in summaries:
             timings_list = s["_timings"]
-            vals = [t.get(total_key, 0.0) for t in timings_list]
+            vals = [t.get("Total Time", 0.0) for t in timings_list]
             means.append(float(np.mean(vals)))
             stds.append(float(np.std(vals, ddof=1) if len(vals) > 1 else 0.0))
         color = _ALG_PALETTE.get(name.lower().split()[0], "gray")
@@ -129,7 +123,7 @@ def plot_overall_comparison(
     ax.set_xscale("log")
     ax.set_yscale("log")
     fig.tight_layout()
-    fname = "./scalability_overall.png"
+    fname = "evaluation2_scalability_overall.png"
     fig.savefig(fname, dpi=150, bbox_inches="tight")
     plt.show()
     print(f"  Saved {fname}")
@@ -139,20 +133,20 @@ def print_scalability_table(
     alg_configs: list[dict],
     sizes: list[int],
 ) -> None:
-    header = f"{'Algorithm':<22s}" + "".join(f"{'n='+str(n):>14s}" for n in sizes)
+    header = f"{'Algorithm'}" + "".join(f"{'n='+str(n)}" for n in sizes)
     sep = "-" * len(header)
     print(f"\n{sep}\n{header}\n{sep}")
     for cfg in alg_configs:
         name = cfg["name"]
         total_key = cfg["total_key"]
         summaries = cfg["summaries_by_size"]
-        row = f"{name:<22s}"
+        row = f"{name}"
         for s in summaries:
             timings_list = s["_timings"]
             vals = [t.get(total_key, 0.0) for t in timings_list]
             m = float(np.mean(vals))
             sd = float(np.std(vals, ddof=1) if len(vals) > 1 else 0.0)
-            row += f"{m:>9.2f}±{sd:<4.2f}"
+            row += f"{m}±{sd}"
         print(row)
     print(sep)
 
@@ -164,17 +158,17 @@ def print_scalability_table(
         print(f"\n{'='*60}")
         print(f"  {name} — Per-Phase Average Timing (seconds)")
         print(f"{'='*60}")
-        phase_header = f"{'Phase':<26s}" + "".join(f"{'n='+str(n):>14s}" for n in sizes)
+        phase_header = f"{'Phase': }" + "".join(f"{'n='+str(n)}" for n in sizes)
         print(phase_header)
         print("-" * len(phase_header))
         for phase in phases + [total_key]:
-            row = f"{phase:<26s}"
+            row = f"{phase}"
             for s in summaries:
                 timings_list = s["_timings"]
                 vals = [t.get(phase, 0.0) for t in timings_list]
                 m = float(np.mean(vals))
                 sd = float(np.std(vals, ddof=1) if len(vals) > 1 else 0.0)
-                row += f"{m:>9.2f}±{sd:<4.2f}"
+                row += f"{m}±{sd}"
             print(row)
         print()
 
@@ -195,10 +189,10 @@ if __name__ == "__main__":
 
     for n in SIZES:
         print(f"\n{'#'*60}")
-        print(f"  DATASET SIZE n = {n:,}")
+        print(f"  DATASET SIZE n = {n}")
         print(f"{'#'*60}")
 
-        print(f"\n  RUNNING BERA ET AL. (n={n:,})")
+        print(f"\n  RUNNING BERA ET AL. (n={n})")
         print("=" * 60)
         _, bera_s = run_trials(
             max_rows=n,
@@ -214,7 +208,7 @@ if __name__ == "__main__":
         )
         bera_summaries.append(bera_s)
 
-        print(f"\n  RUNNING BERCEA ET AL. (n={n:,})")
+        print(f"\n  RUNNING BERCEA ET AL. (n={n})")
         print("=" * 60)
         _, bercea_s = run_trials(
             max_rows=n,
@@ -230,7 +224,7 @@ if __name__ == "__main__":
         )
         bercea_summaries.append(bercea_s)
 
-        print(f"\n  RUNNING BÖHM ET AL. (n={n:,})")
+        print(f"\n  RUNNING BÖHM ET AL. (n={n})")
         print("=" * 60)
         _, boehm_s = run_trials(
             max_rows=n,
@@ -246,17 +240,17 @@ if __name__ == "__main__":
         )
         boehm_summaries.append(boehm_s)
 
-    plot_per_algorithm_phases("Bera", BERA_PHASES, BERA_TOTAL_KEY,
+    plot_per_algorithm_phases("Bera", BERA_PHASES,
                              SIZES, bera_summaries)
-    plot_per_algorithm_phases("Bercea", BERCEA_PHASES, BERCEA_TOTAL_KEY,
+    plot_per_algorithm_phases("Bercea", BERCEA_PHASES,
                              SIZES, bercea_summaries)
-    plot_per_algorithm_phases("Böhm", BOEHM_PHASES, BOEHM_TOTAL_KEY,
+    plot_per_algorithm_phases("Böhm", BOEHM_PHASES,
                              SIZES, boehm_summaries)
 
     alg_configs = [
-        {"name": "Bera",   "phases": BERA_PHASES,   "total_key": BERA_TOTAL_KEY,   "summaries_by_size": bera_summaries},
-        {"name": "Bercea", "phases": BERCEA_PHASES,  "total_key": BERCEA_TOTAL_KEY, "summaries_by_size": bercea_summaries},
-        {"name": "Böhm",   "phases": BOEHM_PHASES,  "total_key": BOEHM_TOTAL_KEY,  "summaries_by_size": boehm_summaries},
+        {"name": "Bera",   "phases": BERA_PHASES, "summaries_by_size": bera_summaries},
+        {"name": "Bercea", "phases": BERCEA_PHASES, "summaries_by_size": bercea_summaries},
+        {"name": "Böhm",   "phases": BOEHM_PHASES,  "summaries_by_size": boehm_summaries},
     ]
     plot_overall_comparison(alg_configs, SIZES)
 

@@ -174,7 +174,7 @@ def fair_clustering(
     timing["Böhm Fair Clustering"] = time.perf_counter() - t0
 
     evaluate_fairness(fair_labels, group_codes, group_names, k)
-    timing["Total"] = time.perf_counter() - t_start
+    timing["Total Time"] = time.perf_counter() - t_start
     return (fair_centers,
             fair_labels,
             fair_cost,

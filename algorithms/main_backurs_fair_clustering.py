@@ -299,7 +299,7 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
         majority, minority = list(blue_ids), list(red_ids)
 
     fairlets: list[list[int]] = []
-    mi, ni = 0, 0  # cursors into majority / minority
+    mi, ni = 0, 0  #  into majority / minority
 
     while mi + red_balance<= len(majority) and ni + blue_balance <= len(minority):
         fairlet = majority[mi:mi + red_balance] + minority[ni:ni + blue_balance]
@@ -329,15 +329,14 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
 def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
                           r: int, b: int) -> list[list[int]]:
     """
-    Walk the HST top-down.  At every internal node:
       1. Decide how many points of each colour to pull from each child
          (MinHeavyPoints).
       2. Actually remove those points from the available pool and form
          fairlets from them.
       3. Recurse into each child with the remaining (now balanced) points.
 
-    We track which points are still "available" (not yet placed in a fairlet)
-    using a global set — this prevents any point from appearing twice.
+    track which points are still not placed in a fairlet
+    using a global set — this prevents any point from appearing twice
     """
     available_points = set(collect_leaf_points(root))
     all_fairlets: list[list[int]] = []
@@ -435,9 +434,9 @@ def cluster_fairlets(points: np.ndarray, fairlets: list[list[int]],
                      random_seed: int = 42
                      ) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    1. For each fairlet pick one representative point.
-    2. Run k-median on the representatives, weighted by fairlet size.
-    3. Every point inherits the cluster of its fairlet's representative.
+    1. for each fairlet pick one representative point - we picked the first one
+    2. run k-median on the representatives, weighted by fairlet size
+    3. every point inherits the cluster of its fairlet's representative
     """
     n_points = len(points)
 
@@ -507,10 +506,10 @@ def fair_clustering(
         random_seed=random_seed,
     )
     timing["Vanilla k-Median"] = time.perf_counter() - t0
-    print(f"[Backurs] Unfair k-median cost: {unfair_cost:,.2f}")
+    print(f"[Backurs] Unfair k-median cost: {unfair_cost}")
 
     t0 = time.perf_counter()
-    print("[Backurs] Building HST embedding...")
+    print("[Backurs] Building Hierarchically Well-Separated Tree embedding...")
     hst_root = build_hst(x, gamma=gamma, random_seed=random_seed)
     timing["HST Construction"] = time.perf_counter() - t0
 

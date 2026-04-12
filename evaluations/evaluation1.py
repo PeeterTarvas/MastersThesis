@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
@@ -28,13 +26,13 @@ def plot_algorithm_pof_comparison(
         edgecolor="black", linewidth=0.6, zorder=3,
     )
 
-    ax.axhline(1.0, color="red", linestyle="--", linewidth=1.2, label="Unfair baseline (PoF = 1)")
+    ax.axhline(1.0, color="red", linestyle="--", linewidth=1.2, label="Unfair baseline - PoF = 1")
 
     for bar, mean, std in zip(bars, pof_means, pof_stds):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + std + 0.005,
-            f"{mean:.4f}\n±{std:.4f}",
+            f"{mean}\n±{std}",
             ha="center", va="bottom", fontsize=9, color="dimgray",
         )
 
@@ -50,14 +48,14 @@ def plot_algorithm_pof_comparison(
 
     fig.tight_layout()
 
-    fig.savefig("./pof_bar_chart.png", dpi=150, bbox_inches="tight")
+    fig.savefig("evaluation1_pof_bar_chart.png", dpi=150, bbox_inches="tight")
     plt.show()
 
     header = (
-        f"{'Algorithm':<22s} {'N runs':>6s}  "
-        f"{'Fair Cost':>14s}  {'Unfair Cost':>14s}  "
-        f"{'PoF mean':>10s}  {'PoF std':>10s}  "
-        f"{'PoF min':>10s}  {'PoF max':>10s}"
+        f"{'Algorithm'} {'N runs'}  "
+        f"{'Fair Cost'}  {'Unfair Cost'}  "
+        f"{'PoF mean'}  {'PoF std'}  "
+        f"{'PoF min'}  {'PoF max'}"
     )
     sep = "-" * len(header)
     print(f"\n{sep}\n{header}\n{sep}")
@@ -81,16 +79,16 @@ def plot_algorithm_pof_comparison(
         pof_max = s["All results PoF (max)"]
 
         print(
-            f"{alg:<22s} {n_runs:>6d}  "
-            f"{fc_m:>14,.2f}  {uc_m:>14,.2f}  "
-            f"{pof_m:>10.4f}  {pof_s:>10.4f}  "
-            f"{pof_min:>10.4f}  {pof_max:>10.4f}"
+            f"{alg} {n_runs}  "
+            f"{fc_m}  {uc_m}  "
+            f"{pof_m}  {pof_s}  "
+            f"{pof_min}  {pof_max}"
         )
 
         csv_lines.append(
-            f"{alg},{n_runs},{fc_m:.4f},{fc_s:.4f},"
-            f"{uc_m:.4f},{uc_s:.4f},"
-            f"{pof_m:.6f},{pof_s:.6f},{pof_min:.6f},{pof_max:.6f}"
+            f"{alg},{n_runs},{fc_m},{fc_s},"
+            f"{uc_m},{uc_s},"
+            f"{pof_m},{pof_s},{pof_min},{pof_max}"
         )
 
     print(sep)
@@ -102,7 +100,7 @@ if __name__ == "__main__":
     GROUP_ID_FEATURES = ["RACE_BINARY"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
-    N_RUNS = 10
+    N_RUNS = 3
     ALPHA = 0.05
     print("  RUNNING BERCEA ET AL. (Proportional Bounds)")
     print("=" * 60)
@@ -154,9 +152,9 @@ if __name__ == "__main__":
         kmedian_max_iter=30
     )
 
-    save_summary(bera_summary, './bera_summary')
-    save_summary(bercea_summary, './bercea_summary')
-    save_summary(boehm_summary, './boehm_summary')
+    save_summary(bera_summary, 'evaluation1_bera_summary')
+    save_summary(bercea_summary, 'evaluation1_bercea_summary')
+    save_summary(boehm_summary, 'evaluation1_boehm_summary')
 
 
     plot_algorithm_pof_comparison([bera_summary, bercea_summary, boehm_summary])
