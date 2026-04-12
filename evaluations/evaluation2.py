@@ -196,7 +196,7 @@ def print_scalability_table(
 
 
 if __name__ == "__main__":
-    SIZES = [1_000, 5_000, 10_000, 50_000, 100_000]
+    SIZES = [1_000, 5_000, 10_000]
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     GROUP_ID_FEATURES = ["RACE_BINARY"]
@@ -214,7 +214,6 @@ if __name__ == "__main__":
         print(f"  DATASET SIZE n = {n:,}")
         print(f"{'#'*60}")
 
-        # --- Bera ---
         print(f"\n  RUNNING BERA ET AL. (n={n:,})")
         print("=" * 60)
         _, bera_s = run_trials(
@@ -231,7 +230,6 @@ if __name__ == "__main__":
         )
         bera_summaries.append(bera_s)
 
-        # --- Bercea ---
         print(f"\n  RUNNING BERCEA ET AL. (n={n:,})")
         print("=" * 60)
         _, bercea_s = run_trials(
@@ -248,7 +246,6 @@ if __name__ == "__main__":
         )
         bercea_summaries.append(bercea_s)
 
-        # --- Böhm ---
         print(f"\n  RUNNING BÖHM ET AL. (n={n:,})")
         print("=" * 60)
         _, boehm_s = run_trials(
