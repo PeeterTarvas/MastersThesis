@@ -197,22 +197,15 @@ def compute_heavy_point_counts(
 ) -> list[tuple[int, int]]:
     """
     For every child of an internal HST node, decide how many red and blue
-    points to pull up as "heavy" points so that:
-      (a) each child's remaining points are (r,b)-balanced, and
-      (b) the collected heavy points are themselves (r,b)-balanced
+    points to pull up as heavy points so that:
+      1 each child's remaining points are (r,b)-balanced, and
+      2 the collected heavy points are themselves (r,b)-balanced
           (so we can form fairlets from them).
-
-    Three stages:
-
-    1 — Mandatory excess.
-          Remove the minimum necessary from each child to make it balanced.
-
-    2 — Borrow dominant-colour points.
-          If the total heavy set is imbalanced, borrow extra points of the
+    stages:
+    1  Remove the minimum necessary from each child to make it balanced.
+    2 If the total heavy set is imbalanced, borrow extra points of the
           dominant colour from children that have a surplus.
-
-    3 — Pull up non-saturated fairlet remainders.
-          If still imbalanced, pull up entire leftover fairlets from
+    3 If still imbalanced, pull up entire leftover fairlets from
           children (each leftover is smaller than r+b).
     """
     n_children = len(child_colour_counts)
