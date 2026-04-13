@@ -79,7 +79,7 @@ def plot_runtime_vs_alpha(rows: list[dict]) -> None:
                         capsize=4, markersize=6, linewidth=1.6)
 
     ax.set_xlabel("α (fairness slack)", fontsize=11)
-    ax.set_ylabel("Total wall-clock time (s)", fontsize=11)
+    ax.set_ylabel("Total Runtime", fontsize=11)
     ax.set_title("Runtime vs α  (n=10 k, k=10)", fontsize=13)
     ax.legend(fontsize=9)
     ax.grid(axis="both", linestyle="--", alpha=0.3)

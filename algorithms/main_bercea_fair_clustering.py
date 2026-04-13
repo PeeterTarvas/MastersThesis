@@ -268,7 +268,7 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        max_rows=50_000,
+        max_rows=10_000,
     )
     ##coreset_df = compute_fair_coreset(df, n_locations=3000, random_seed=42)
     df = csv_loader.preprocess_dataset(df)

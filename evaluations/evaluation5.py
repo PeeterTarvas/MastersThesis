@@ -120,7 +120,7 @@ def print_k_table(rows: list[dict]) -> None:
     header = (
         f"{'k':>4s}  "
         f"{'Bera PoF':>16s}  {'Bercea PoF':>16s}  "
-        f"{'Bera Fair Cost':>12s}  {'Cost Fair$':>12s}  "
+        f"{'Bera Fair Cost':>12s}  {'Bercea Cost Fair':>12s}  "
         f"{'Unfair Cost':>12s}  "
         f"{'Bera Time':>12s}  {'Bercea Time':>12s}"
     )

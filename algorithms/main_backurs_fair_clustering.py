@@ -90,7 +90,6 @@ def build_hst(
     max_depth = int(np.ceil(np.log(max(n_points, 4)) / np.log(gamma))) + 3
 
     def _build(point_idx: list[int], depth: int, cell_side: float) -> HSTNode:
-        edge_w = cell_side * np.sqrt(n_dims)
         node = HSTNode(level=depth)
 
         if len(point_idx) <= 1 or depth >= max_depth:
@@ -206,14 +205,14 @@ def compute_heavy_point_counts(
 
     Three stages:
 
-      Stage 1 — Mandatory excess.
+    1 — Mandatory excess.
           Remove the minimum necessary from each child to make it balanced.
 
-      Stage 2 — Borrow dominant-colour points.
+    2 — Borrow dominant-colour points.
           If the total heavy set is imbalanced, borrow extra points of the
           dominant colour from children that have a surplus.
 
-      Stage 3 — Pull up non-saturated fairlet remainders.
+    3 — Pull up non-saturated fairlet remainders.
           If still imbalanced, pull up entire leftover fairlets from
           children (each leftover is smaller than r+b).
     """
@@ -318,7 +317,7 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
         if is_balanced(left_r, left_b, red_balance, blue_balance) and left_r + left_b > 0:
             fairlets.append(leftover_maj + leftover_min)
         else:
-            # can't form a balanced group — split into harmless singletons
+            # split into  singletons if cant form balanced group
             for idx in leftover_maj:
                 fairlets.append([idx])
             for idx in leftover_min:
@@ -342,7 +341,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
     all_fairlets: list[list[int]] = []
 
     def _count_available(node: HSTNode) -> tuple[int, int]:
-        "Count available red / blue points in the subtree of *node*."
+        "count available red / blue points in the subtree of node"
         if not node.children:
             n_red = sum(1 for i in node.leaf_indices
                         if i in available_points and colours[i] == 0)
@@ -358,7 +357,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
 
     def _take_points(node: HSTNode, colour: int,
                      how_many: int) -> list[int]:
-        "Collect up to how_many available points of colour from subtree."
+        "collect up to how_many available points of colour from subtree."
         if how_many <= 0:
             return []
         taken: list[int] = []
@@ -480,6 +479,13 @@ def fair_clustering(
         random_seed: int = 42,
         gamma: int = 2,
 ) -> tuple:
+    """
+
+    :param red_balance: both determent the ratio balance between r and b in clusters
+    :param blue_balance: both determent the ratio balance between r and b in clusters
+    :param gamma: in tree building into how many splits one pice is spited to, higher the more time it takes
+    :return:
+    """
     timing = {}
     t_start = time.perf_counter()
 
