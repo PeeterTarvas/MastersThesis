@@ -24,7 +24,7 @@ def is_balanced(len_left: int, len_right: int, left: int, right: int) -> bool:
 
 def validate_fairlets(fairlets: list[list[int]], colours: np.ndarray,
                       r: int, b: int, n_total: int) -> None:
-    """Check that fairlets cover every point exactly once and are balanced."""
+    "check that fairlets cover every point exactly once and are balanced."
     seen = set()
     duplicates = 0
     balance_violations = 0
@@ -127,7 +127,7 @@ def build_hst(
     return _build(list(range(n_points)), 0, cube_side)
 
 def collect_leaf_points(node: HSTNode) -> list[int]:
-    """Return every point index stored in the leaves below *node*."""
+    "return every point index stored in the leaves below node."
     if not node.children:
         return list(node.leaf_indices)
     result: list[int] = []
@@ -139,11 +139,10 @@ def collect_leaf_points(node: HSTNode) -> list[int]:
 def compute_excess(n_red: int, n_blue: int,
                    r: int, b: int) -> tuple[int, int]:
     """
-    Return (remove_red, remove_blue) — the minimum number of points
+    return (remove_red, remove_blue)m the minimum number of points
     to discard from one colour so that the remainder is (r,b)-balanced.
 
-    Example with (r=1, b=1):
-        (5 red, 3 blue)  →  remove 2 red  →  (3, 3) balanced.
+    example with (r=1, b=1): (5 red, 3 blue)  remove 2 red   (3, 3) balanced.
     """
     if n_red == 0 and n_blue == 0:
         return 0, 0
@@ -158,7 +157,7 @@ def compute_excess(n_red: int, n_blue: int,
 def leftover_fairlet_size(n_red: int, n_blue: int,
                           r: int, b: int) -> tuple[int, int]:
     """
-    After packing as many full (r+b)-sized fairlets as possible from a
+    after packing as many full (r+b)-sized fairlets as possible from a
     balanced set, return (leftover_red, leftover_blue).
     """
     if n_red == 0 and n_blue == 0:
@@ -177,7 +176,7 @@ def leftover_fairlet_size(n_red: int, n_blue: int,
 def borrowable_dominant(is_red_dominant: bool, n_red: int, n_blue: int,
                         r: int, b: int) -> int:
     """
-    How many points of the dominant colour can we borrow from a child
+    how many points of the dominant colour can we borrow from a child
     while keeping that child (r,b)-balanced?
     """
     if is_red_dominant:
@@ -282,9 +281,9 @@ def compute_heavy_point_counts(
 def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
                        red_balance: int, blue_balance: int) -> list[list[int]]:
     """
-    Partition a collection of red and blue point indices into (r,b)-fairlets.
+    partition a collection of red and blue point indices into (r,b)-fairlets.
 
-    Each fairlet has at most r+b points:  r from the majority colour and
+    each fairlet has at most r+b points:  r from the majority colour and
     b from the minority colour.  Any remainder that cannot form a balanced
     fairlet is split into singletons (a single point is trivially fair).
     """
@@ -328,11 +327,9 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
 def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
                           r: int, b: int) -> list[list[int]]:
     """
-      1. Decide how many points of each colour to pull from each child
-         (MinHeavyPoints).
-      2. Actually remove those points from the available pool and form
-         fairlets from them.
-      3. Recurse into each child with the remaining (now balanced) points.
+      1. decide how many points of each colour to pull from each child (MinHeavyPoints).
+      2. remove those points from the available pool and form fairlets from them.
+      3. recurse into each child with the remaining (now balanced) points.
 
     track which points are still not placed in a fairlet
     using a global set — this prevents any point from appearing twice
@@ -553,7 +550,6 @@ def fair_clustering(
 def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
                           k: int, r: int, b: int,
                           group_names: list) -> int:
-    """Print per-cluster balance and return the number of violations."""
     required_balance = b / r
     violations = 0
     print(f"\n[Balance Audit] Required >= {required_balance:.3f}")
