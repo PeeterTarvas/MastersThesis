@@ -136,7 +136,7 @@ def min_cost_flow_rounding(
     for center in range(k):
         G.add_node(f"v_{center}", demand=int(round(B_i[center])))
 
-    # Layer 4: sink — absorbs B units
+    # layer 4: sink — absorbs B units
     G.add_node("t", demand=int(round(B)))
 
     for point in range(n):
@@ -248,7 +248,7 @@ def fair_clustering(
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
 
     print(f"LP fractional cost: {float(np.dot(weights, (pairwise_l1(x, centers) * x_lp).sum(axis=1))):,.2f}")
-    # --- Step 3: MCF rounding ---
+
     print("Min-cost flow rounding...")
     t_start_rounding = time.perf_counter()
     distances_to_centers = pairwise_l1(x, centers)

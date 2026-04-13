@@ -156,7 +156,7 @@ def iterative_rounding(
             ineq_rows.extend([row_p, row_n])
             ineq_rhs.extend([high, -low])
 
-        # Per-group, per-center weighted mass range
+        # per-group, per-center weighted mass range
         for group_code_idx in range(max_group_code):
             for col in range(nr_of_centers):
                 if not fair_active[group_code_idx, col]:
