@@ -14,6 +14,49 @@ from evaluate import (
 )
 from kmedian import kmedian, pairwise_l1
 
+def compute_rb(p_base: float, alpha: float, max_r: int = 10) -> tuple[int, int]:
+    """
+    Compute (r, b) balance parameters for binary fairlet decomposition.
+
+    Given a base colour with global proportion *p_base* and fairness slack alpha,
+    the minority colour's minimum acceptable fraction in each fairlet is:
+
+        p_target = max(0.01,  min(p_base, 1 - p_base)  - alpha)
+
+    We then find the tightest (r, b=1) pair with  1/(r+1) >= p_target,
+    capped at max_r to keep fairlets small (and the O(r^8) approx factor
+    manageable).
+
+    Returns (r, b) with  r >= b = 1  and  b/(r+b) >= p_target.
+    """
+    p_min = min(p_base, 1.0 - p_base)
+    p_target = max(0.01, p_min - alpha)
+
+    if p_target >= 0.5:
+        return 1, 1
+
+    # Find largest r such that  1/(r+1) >= p_target
+    r = int(1.0 / p_target) - 1           # first guess
+    r = max(1, r)
+    # Tighten upwards if the guess undershoots
+    while r >= 1 and 1.0 / (r + 1) < p_target - 1e-9:
+        r -= 1
+    r = max(1, min(r, max_r))
+    return r, 1
+
+def proportional_bounds(
+    group_codes: np.ndarray,
+    n_groups: int,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    "compute proportional fairness bounds [f_h - alpha, f_h + alpha] per group."
+    n = len(group_codes)
+    f = np.array([(group_codes == h).sum() / n for h in range(n_groups)])
+    lower_bound = np.maximum(0.0, f - alpha)
+    upper_bound = np.minimum(1.0, f + alpha)
+    return lower_bound, upper_bound
+
+
 def is_balanced(len_left: int, len_right: int, left: int, right: int) -> bool:
     if len_left == 0 and len_right == 0:
         return True
@@ -461,18 +504,14 @@ def fair_clustering(
         df: pd.DataFrame,
         feature_cols: list[str],
         protected_group_col: str,
-        k: int,
-        red_balance: int = 1,
-        blue_balance: int = 1,
-        kmedian_trials: int = 5,
-        kmedian_max_iter: int = 30,
+        k_cluster: int,
+        alpha: float = 0.05,
+        kmedian_trials: int = 3,
+        kmedian_max_iter: int = 50,
         random_seed: int = 42,
         gamma: int = 2,
 ) -> tuple:
     """
-
-    :param red_balance: both determent the ratio balance between r and b in clusters
-    :param blue_balance: both determent the ratio balance between r and b in clusters
     :param gamma: in tree building into how many splits one pice is spited to, higher the more time it takes
     :return:
     """
@@ -481,64 +520,127 @@ def fair_clustering(
 
     t0 = time.perf_counter()
     x = df[feature_cols].to_numpy(dtype=np.float64)
+    dataset_length = len(x)
     group_codes, group_names = encode_groups_to_int(df[protected_group_col])
+    n_groups = len(group_names)
 
-    colors = group_codes.copy()
-    n_red = int((colors == 0).sum())
-    n_blue = int((colors == 1).sum())
-
-    print(f"\n[Backurs] n={len(x):,}  k={k}  groups={group_names}")
-    print(f"[Backurs] Red ('{group_names[0]}'): {n_red}  "
-          f"Blue ('{group_names[1]}'): {n_blue}")
-    print(f"[Backurs] Balance: (r={red_balance}, b={blue_balance})  "
-          f"→ min balance ≥ {blue_balance/red_balance:.3f}")
-
-    timing["Data Preparation"] = time.perf_counter() - t0
+    lower_bounds, upper_bounds = proportional_bounds(
+        group_codes, n_groups, alpha
+    )
+    timing['Data Preparation'] = time.perf_counter() - t0
 
     t0 = time.perf_counter()
     unfair_centers, unfair_labels, unfair_cost = kmedian(
-        x, k, _weights=None,
-        n_trials=kmedian_trials, max_iter=kmedian_max_iter,
+        x, k_cluster,
+        _weights=None,
+        n_trials=kmedian_trials,
+        max_iter=kmedian_max_iter,
         random_seed=random_seed,
     )
-    timing["Vanilla k-Median"] = time.perf_counter() - t0
-    print(f"[Backurs] Unfair k-median cost: {unfair_cost}")
+    timing['Vanilla K-Median'] = time.perf_counter() - t0
+    print(f"[Backurs] Unfair k-median cost: {unfair_cost:,.2f}")
 
     t0 = time.perf_counter()
-    print("[Backurs] Building Hierarchically Well-Separated Tree embedding...")
-    hst_root = build_hst(x, gamma=gamma, random_seed=random_seed)
-    timing["HST Construction"] = time.perf_counter() - t0
+
+    if n_groups <= 2:
+        # only one meaningful if binary attributes
+        best_base = 0
+        print(f"[Backurs] Binary case -- base='{group_names[0]}'")
+    else:
+        # L one-vs-rest decompositions: quick cost estimation
+        # NOTE: Singletons contribute 0 to intra-fairlet cost but provide
+        # no fairness enforcement.  We penalize uncovered (singleton) points
+        # using the average per-point cost of multi-point fairlets as a
+        # surrogate for the cost they would pay if forced into fairlets.
+        print(f"[Backurs] One-vs-rest base selection "
+              f"({n_groups} decompositions)...")
+        base_costs: dict[int, float] = {}
+        for base_c in range(n_groups):
+            binary = np.where(
+                group_codes == base_c, 0, 1
+            ).astype(np.int32)
+            p_base_c = (binary == 0).sum() / dataset_length
+            r_try, b_try = compute_rb(p_base_c, alpha)
+            hst_try = build_hst(x, gamma=gamma,
+                                random_seed=random_seed + base_c)
+            fl_try = fairlet_decomposition(hst_try, binary, r_try, b_try)
+
+            # decomposition cost: sum of intra-fairlet L1 distances
+            decomp_cost = 0.0
+            n_covered = 0
+            n_singletons = 0
+            for fl in fl_try:
+                if len(fl) > 1:
+                    pts = x[fl]
+                    decomp_cost += np.abs(pts - pts.mean(axis=0)).sum()
+                    n_covered += len(fl)
+                else:
+                    n_singletons += 1
+
+            # singleton penalty: avg per-point cost * n_singletons
+            if n_covered > 0:
+                avg_cost = decomp_cost / n_covered
+            else:
+                avg_cost = 0.0
+            cost_try = decomp_cost + n_singletons * avg_cost
+
+            base_costs[base_c] = cost_try
+
+        best_base = min(base_costs, key=base_costs.get)
+        for c, cost in base_costs.items():
+            print(f"  base '{group_names[c]}': adjusted cost = {cost:,.0f}"
+                  f"{'  <-- best' if c == best_base else ''}")
+
+    timing['Base Selection'] = time.perf_counter() - t0
+    print(f"[Backurs] Chosen base colour: '{group_names[best_base]}'")
 
     t0 = time.perf_counter()
-    fairlets = fairlet_decomposition(hst_root, colors,
-                                     red_balance, blue_balance)
-    timing["Fairlet Decomposition"] = time.perf_counter() - t0
+    binary_colours = np.where(
+        group_codes == best_base, 0, 1
+    ).astype(np.int32)
+    p_base = (binary_colours == 0).sum() / dataset_length
+    r_final, b_final = compute_rb(p_base, alpha)
+    print(f"[Backurs] (r={r_final}, b={b_final})  "
+          f"balance >= {b_final / (r_final + b_final)}")
+
+    hst_root = build_hst(x, gamma=gamma, random_seed=random_seed + best_base)
+    timing['HST Construction'] = time.perf_counter() - t0
+
+    t0 = time.perf_counter()
+    fairlets = fairlet_decomposition(hst_root, binary_colours, r_final, b_final)
+    timing['Fairlet Decomposition'] = time.perf_counter() - t0
 
     n_fairlets = len(fairlets)
     covered = sum(len(f) for f in fairlets)
     avg_size = covered / n_fairlets if n_fairlets else 0
+    singleton_count = sum(1 for f in fairlets if len(f) == 1)
     print(f"[Backurs] {n_fairlets} fairlets  "
           f"(avg size {avg_size:.1f}, "
-          f"covering {covered}/{len(x)} points)")
-    validate_fairlets(fairlets, colors, red_balance, blue_balance, len(x))
+          f"{singleton_count} singletons, "
+          f"covering {covered}/{dataset_length} points)")
+    validate_fairlets(fairlets, binary_colours, r_final, b_final, dataset_length)
 
     t0 = time.perf_counter()
     fair_centers, fair_labels, fair_cost = cluster_fairlets(
-        x, fairlets, k,
-        kmedian_trials=kmedian_trials, kmedian_max_iter=kmedian_max_iter,
+        x, fairlets, k_cluster,
+        kmedian_trials=kmedian_trials,
+        kmedian_max_iter=kmedian_max_iter,
         random_seed=random_seed,
     )
-    timing["Cluster Fairlets"] = time.perf_counter() - t0
-    timing["Total"] = time.perf_counter() - t_start
+    timing['Cluster Fairlets'] = time.perf_counter() - t0
 
-    pof = fair_cost / unfair_cost if unfair_cost > 0 else float("inf")
+    timing['Total Time'] = time.perf_counter() - t_start
 
+    pof = fair_cost / unfair_cost if unfair_cost > 0 else float('inf')
     print(f"[Backurs] Fair cost: {fair_cost:,.2f}   "
+          f"Unfair cost: {unfair_cost:,.2f}   "
           f"PoF: {pof:.4f}")
 
-    return (fair_centers, fair_labels, fair_cost, timing,
-            unfair_centers, unfair_labels, unfair_cost,
-            x, group_codes, group_names, df, fairlets)
+    return (fair_centers, unfair_labels, unfair_cost,
+            fair_labels, fair_cost, timing,
+            x, group_codes, group_names,
+            lower_bounds, upper_bounds)
+
 
 def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
                           k: int, r: int, b: int,
@@ -566,24 +668,62 @@ def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
 if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
-        csv_loader.LOAD_COLS, max_rows=10_000)
-    df = csv_loader.preprocess_dataset(df)
-    df["BINARY_GROUP"] = df["SEX"].astype(str)
+        csv_loader.LOAD_COLS,
+        max_rows=20_000,
+        random_seed=42,
+    )
+    df = csv_loader.preprocess_dataset(df, group_id_features=["RACE_6"])
 
-    (fair_centers, fair_labels, fair_cost, timing,
-     unfair_centers, unfair_labels, unfair_cost,
-     points, group_codes, group_names, _, fairlets) = fair_clustering(
+    FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
+    PROTECTED_COL = "GROUP_ID"
+    K = 10
+    ALPHA = 0.05
+
+    (fair_centers, unfair_labels, unfair_cost,
+     fair_labels, fair_cost, timing,
+     x, group_codes, group_names,
+     lower_bounds, upper_bounds) = fair_clustering(
         df,
-        feature_cols=["Lat_Scaled", "Lon_Scaled"],
-        protected_group_col="BINARY_GROUP",
-        k=5, red_balance=1, blue_balance=1, random_seed=42)
+        feature_cols=FEATURE_COLS,
+        protected_group_col=PROTECTED_COL,
+        k_cluster=K,
+        alpha=ALPHA,
+        random_seed=42,
+    )
 
-    weights = np.ones(len(points))
-    fair_result = make_result("backurs", fair_centers, fair_labels,
-                              fair_cost, unfair_cost, points, weights,
-                              group_codes, group_names, timing)
-    unfair_result = make_result("kmedian-unfair", unfair_centers,
-                                unfair_labels, unfair_cost, unfair_cost,
-                                points, weights, group_codes, group_names)
-    evaluate(fair_result, unfair_result=unfair_result)
-    audit_cluster_balance(fair_labels, group_codes, 5, 1, 1, group_names)
+    fair_result = make_result(
+        algorithm="backurs",
+        centers=fair_centers,
+        labels=fair_labels,
+        fair_cost=fair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=np.ones(len(fair_labels)),
+        group_codes=group_codes,
+        group_names=group_names,
+        timing=timing,
+    )
+
+    unfair_result = make_result(
+        algorithm="kmedian-unfair-baseline",
+        centers=fair_centers,
+        labels=unfair_labels,
+        fair_cost=unfair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=np.ones(len(fair_labels)),
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+
+    summary = evaluate(fair_result, unfair_result=unfair_result)
+    audit_fairness_proportional(fair_result, lower_bounds, upper_bounds)
+
+    plot_execution_times(fair_result, timing,
+                         title="Backurs et al. -- Run Time")
+    plot_spatial_clusters(df, fair_result, unfair_result,
+                          feature_cols=FEATURE_COLS)
+    plot_cluster_pof(fair_result, [summary])
+    plot_pof_comparison(fair_result, [summary])
+    plot_group_pof(fair_result, [summary])
+    plot_cost_breakdown(fair_result, [summary])
