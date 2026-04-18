@@ -11,7 +11,7 @@ ALPHAS = [0.01, 0.02, 0.05, 0.1, 0.2]
 
 FEATURE_CONFIGS = [
     {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.343},
-    {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094},
+    #{"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094},
 ]
 
 _ALG_COLORS = {"Bera": "#4C72B0", "Bercea": "#DD8452"}
