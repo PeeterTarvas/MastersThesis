@@ -636,7 +636,7 @@ def fair_clustering(
           f"Unfair cost: {unfair_cost:,.2f}   "
           f"PoF: {pof:.4f}")
 
-    return (fair_centers, unfair_labels, unfair_cost,
+    return (unfair_centers, unfair_labels, unfair_cost, fair_centers,
             fair_labels, fair_cost, timing,
             x, group_codes, group_names,
             lower_bounds, upper_bounds)
@@ -679,7 +679,7 @@ if __name__ == "__main__":
     K = 10
     ALPHA = 0.05
 
-    (fair_centers, unfair_labels, unfair_cost,
+    (unfair_centers, unfair_labels, unfair_cost, fair_centers,
      fair_labels, fair_cost, timing,
      x, group_codes, group_names,
      lower_bounds, upper_bounds) = fair_clustering(
@@ -706,7 +706,7 @@ if __name__ == "__main__":
 
     unfair_result = make_result(
         algorithm="kmedian-unfair-baseline",
-        centers=fair_centers,
+        centers=unfair_centers,
         labels=unfair_labels,
         fair_cost=unfair_cost,
         unfair_cost=unfair_cost,

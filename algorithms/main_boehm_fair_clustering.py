@@ -218,10 +218,10 @@ if __name__ == "__main__":
     df = csv_loader.load_csv_chunked(
         "../us_census_puma_data.csv",
         csv_loader.LOAD_COLS,
-        max_rows=2_000,
+        max_rows=10_000,
     )
 
-    df_processed = csv_loader.preprocess_dataset(df, ['RACE_6'])
+    df_processed = csv_loader.preprocess_dataset(df, ['RACE_BINARY'])
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
