@@ -7,15 +7,13 @@ from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from runner import run_trials, build_bera_result, build_bercea_result
 
 FEATURE_CONFIGS = [
-    {"name": "SEX", "group_id_features": ["SEX"], "L": 2, "DI": 0.013},
-    {"name": "RACE_BINARY", "group_id_features": ["RACE_BINARY"], "L": 2, "DI": 0.288},
-    {"name": "AGE_BIN", "group_id_features": ["AGE_BIN"], "L": 4, "DI": 0.042},
-    {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094},
-    {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.343},
-    {"name": "INC_BIN × AGE_BIN", "group_id_features": ["INC_BIN", "AGE_BIN"], "L": 16, "DI": 0.3},
-    {"name": "INC_BIN × AGE_BIN × SEX", "group_id_features": ["INC_BIN", "AGE_BIN", "SEX"], "L": 32, "DI": 0.3},
-    {"name": "INC_BIN × RACE_6 × SEX", "group_id_features": ["INC_BIN", "RACE_6", "SEX"], "L": 64, "DI": 0.3},
-
+    {"name": "SEX",            "group_id_features": ["SEX"],                     "L": 2,  "DI": 0.013},
+    {"name": "RACE_BINARY",    "group_id_features": ["RACE_BINARY"],             "L": 2,  "DI": 0.288},
+    {"name": "AGE_BIN",        "group_id_features": ["AGE_BIN"],                 "L": 4,  "DI": 0.042},
+    {"name": "INC_BIN",        "group_id_features": ["INC_BIN"],                 "L": 4,  "DI": 0.094},
+    {"name": "RACE_6",         "group_id_features": ["RACE_6"],                  "L": 6,  "DI": 0.343},
+    {"name": "AGE_BIN × SEX",  "group_id_features": ["AGE_BIN", "SEX"],          "L": 8,  "DI": 0.040},
+    {"name": "RACE_6 × SEX",   "group_id_features": ["RACE_6",  "SEX"],          "L": 12, "DI": 0.311},
 ]
 
 _ALG_PALETTE = {

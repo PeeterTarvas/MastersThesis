@@ -1,3 +1,4 @@
+import json
 from typing import Callable, Any, NamedTuple
 
 import numpy as np
@@ -5,7 +6,7 @@ import pandas as pd
 
 import csv_loader
 from evaluate import ClusteringResult, make_result, compute_pof, compute_cluster_costs, \
-    compute_cluster_pof
+    compute_cluster_pof, compute_group_costs, compute_gpof
 from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
@@ -26,6 +27,10 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
     all_timings: list[dict] = []
     all_cluster_fair_costs: list[dict] = []
     all_cluster_unfair_costs: list[dict] = []
+    all_cpofs: list[dict] = []
+    all_group_costs_fair: list[dict] = []
+    all_group_costs_unfair: list[dict] = []
+    all_gpofs: list[dict] = []
     trial_outputs: list[TrialOutput] = []
 
     for run_id in range(n_runs):
@@ -37,7 +42,7 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
             max_rows=max_rows,
             random_seed=seed
         )
-        print(f"DEBUG: Shape after load_csv_chunked: {df.shape}")
+        print(f"  Run {run_id + 1}/{n_runs}  |  shape={df.shape}")
 
         # If df is empty here, the problem is in load_csv_chunked or the CSV file itself.
         if df.empty:
@@ -56,67 +61,68 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         unfair_costs.append(uc)
         pofs.append(pof)
         all_timings.append(trial.timing)
-        all_cluster_fair_costs.append(compute_cluster_costs(trial.fair_result))
-        all_cluster_unfair_costs.append(compute_cluster_costs(trial.unfair_result))
-        print(f"  → fair_cost={fc:,.2f}  unfair_cost={uc:,.2f}  "
-              f"PoF={pof:.4f}")
 
-    # pick representitive result whos cost is closest to median fair cost
-    median_cost = float(np.median(fair_costs))
-    rep_idx = int(np.argmin(np.abs(np.array(fair_costs) - median_cost)))
-    rep_trial_timing = all_timings[rep_idx]
-    rep_trial = trial_outputs[rep_idx]
+        cluster_fc = compute_cluster_costs(trial.fair_result)
+        cluster_uc = compute_cluster_costs(trial.unfair_result)
+        cpof = compute_cluster_pof(trial.fair_result, trial.unfair_result)
+        all_cluster_fair_costs.append(cluster_fc)
+        all_cluster_unfair_costs.append(cluster_uc)
+        all_cpofs.append(cpof)
 
+        group_fc = compute_group_costs(trial.fair_result)
+        group_uc = compute_group_costs(trial.unfair_result)
+        gpof = compute_gpof(group_fc, group_uc)
+        all_group_costs_fair.append(group_fc)
+        all_group_costs_unfair.append(group_uc)
+        all_gpofs.append(gpof)
+
+    # Aggregate timing
     all_keys = set().union(*all_timings)
     avg_timing: dict[str, float] = {
         k: float(np.mean([t.get(k, 0.0) for t in all_timings]))
-        for k in all_keys
+        for k in sorted(all_keys)
     }
 
-    result = ClusteringResult(
-        algorithm=rep_trial.fair_result.algorithm + f"_avg{n_runs}",
-        centers=rep_trial.fair_result.centers,
-        labels=rep_trial.fair_result.labels,
-        fair_cost=rep_trial.fair_result.fair_cost,
-        unfair_cost=rep_trial.fair_result.unfair_cost,
-        X=rep_trial.fair_result.X,
-        weights=rep_trial.fair_result.weights,
-        group_codes=rep_trial.fair_result.group_codes,
-        group_names=rep_trial.fair_result.group_names,
-        timing=rep_trial_timing,
-    )
+    # Aggregate per-group PoF
+    all_group_names = list(all_gpofs[0].keys()) if all_gpofs else []
+    gpof_means, gpof_stds = {}, {}
+    for g in all_group_names:
+        vals = [gp.get(g, float("inf")) for gp in all_gpofs]
+        valid = [v for v in vals if v != float("inf")]
+        gpof_means[g] = float(np.mean(valid)) if valid else float("inf")
+        gpof_stds[g] = float(np.std(valid, ddof=1)) if len(valid) > 1 else 0.0
 
-    unfair_result = ClusteringResult(
-        algorithm=rep_trial.unfair_result.algorithm + f"_avg{n_runs}",
-        centers=rep_trial.unfair_result.centers,
-        labels=rep_trial.unfair_result.labels,
-        fair_cost=rep_trial.unfair_result.fair_cost,
-        unfair_cost=rep_trial.unfair_result.unfair_cost,
-        X=rep_trial.unfair_result.X,
-        weights=rep_trial.unfair_result.weights,
-        group_codes=rep_trial.unfair_result.group_codes,
-        group_names=rep_trial.unfair_result.group_names,
-        timing=rep_trial_timing,
-    )
+    # Aggregate per-cluster PoF (pooled)
+    pooled_cpof_values = []
+    for cpof_dict in all_cpofs:
+        for v in cpof_dict.values():
+            if v != float("inf"):
+                pooled_cpof_values.append(v)
 
-    per_cluster_fair_costs: dict[int, list[float]] = compute_cluster_costs(result)
-    per_cluster_unfair_costs: dict[int, list[float]] = compute_cluster_costs(unfair_result)
-    cluster_pof = compute_cluster_pof(result, unfair_result)
+    # Per-run equity metrics
+    cpof_spreads, cpof_ginis = [], []
+    for cpof_dict in all_cpofs:
+        vals = [v for v in cpof_dict.values() if v != float("inf")]
+        if vals:
+            cpof_spreads.append(max(vals) - min(vals))
+            cpof_ginis.append(_gini(vals))
+        else:
+            cpof_spreads.append(0.0)
+            cpof_ginis.append(0.0)
 
-    valid_fair_cluster_cost = [v for v in per_cluster_fair_costs.values() if v != float('inf')] if per_cluster_fair_costs else []
-    valid_unfair_cluster_cost = [v for v in per_cluster_unfair_costs.values() if v != float('inf')] if per_cluster_unfair_costs else []
-
-    mean_fair_group_fair = float(np.mean(valid_fair_cluster_cost))
-    std_fair_group_fair = float(np.std(valid_fair_cluster_cost))
-
-    mean_unfair_group_fair = float(np.mean(valid_unfair_cluster_cost))
-    std_unfair_group_fair = float(np.std(valid_unfair_cluster_cost))
-
+    gpof_spreads, gpof_ginis = [], []
+    for gpof_dict in all_gpofs:
+        vals = [v for v in gpof_dict.values() if v != float("inf")]
+        if vals:
+            gpof_spreads.append(max(vals) - min(vals))
+            gpof_ginis.append(_gini(vals))
+        else:
+            gpof_spreads.append(0.0)
+            gpof_ginis.append(0.0)
 
     avg_summary: dict[str, Any] = {
-        "Algorithm": result.algorithm,
         "number of runs": n_runs,
-        "All results representative_trial": rep_idx + 1,
+        # Global cost / PoF
         "All results Fair Cost (mean)": float(np.mean(fair_costs)),
         "All results Fair Cost (std)": float(np.std(fair_costs, ddof=1 if n_runs > 1 else 0)),
         "All results Fair Cost (min)": float(np.min(fair_costs)),
@@ -127,30 +133,48 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         "All results PoF (std)": float(np.std(pofs, ddof=1 if n_runs > 1 else 0)),
         "All results PoF (min)": float(np.min(pofs)),
         "All results PoF (max)": float(np.max(pofs)),
-        "Median Run Cluster Fair Costs (mean)": mean_fair_group_fair,
-        "Median Run Cluster Fair Costs (std)": std_fair_group_fair,
-        "Median Run Cluster Unfair Costs (mean)": mean_unfair_group_fair,
-        "Median Run Cluster Unfair Costs (std)": std_unfair_group_fair,
-        "Median Run Timing": rep_trial_timing,
-        "Median Fair Trial Fair Cluster Price of Fairness": per_cluster_fair_costs,
-        "Median Fair Trial Unfair Cluster Price of Fairness": per_cluster_unfair_costs,
-        "Median Fair Trial Clustering Price of Fairness": cluster_pof,
         "Avg Timing": avg_timing,
+        # Per-group aggregated metrics
+        "G-PoF means": gpof_means,
+        "G-PoF stds": gpof_stds,
+        "G-PoF spreads": gpof_spreads,
+        "G-PoF Ginis": gpof_ginis,
+        # Per-cluster aggregated metrics
+        "Pooled C-PoF values": pooled_cpof_values,
+        "C-PoF spreads": cpof_spreads,
+        "C-PoF Ginis": cpof_ginis,
+        # Raw per-trial data (for downstream plots)
         "_fair_costs": fair_costs,
         "_unfair_costs": unfair_costs,
         "_pofs": pofs,
         "_timings": all_timings,
+        "_all_cpofs": all_cpofs,
+        "_all_gpofs": all_gpofs,
+        "_all_group_costs_fair": all_group_costs_fair,
+        "_all_group_costs_unfair": all_group_costs_unfair,
+        "_all_cluster_fair_costs": all_cluster_fair_costs,
+        "_all_cluster_unfair_costs": all_cluster_unfair_costs,
     }
-    _print_summary(avg_summary)
 
-    return result, avg_summary
+    _print_summary(avg_summary)
+    return avg_summary
+
+def _gini(values: list[float]) -> float:
+    """Gini coefficient for a list of positive values (0 = equal, 1 = max inequality)."""
+    arr = np.array(values, dtype=float)
+    if len(arr) == 0 or arr.sum() == 0:
+        return 0.0
+    arr = np.sort(arr)
+    n = len(arr)
+    index = np.arange(1, n + 1)
+    return float((2 * np.sum(index * arr) - (n + 1) * np.sum(arr)) / (n * np.sum(arr)))
 
 
 def _print_summary(s: dict) -> None:
-    print(f"\n{'='*60}")
-    print(f"  TRIAL AVERAGE SUMMARY — {s['Algorithm']}\n")
-    print(f"  Trials: {s['number of runs']}  |  "
-          f"Representative: #{s['All results representative_trial']}")
+    n = s["number of runs"]
+    print(f"\n{'=' * 60}")
+    print(f"  TRIAL SUMMARY  ({n} runs)")
+    print(f"{'=' * 60}")
     print(f"  Fair Cost   : {s['All results Fair Cost (mean)']:>12,.2f}  "
           f"± {s['All results Fair Cost (std)']:,.2f}  "
           f"[{s['All results Fair Cost (min)']:,.2f} – {s['All results Fair Cost (max)']:,.2f}]")
@@ -159,30 +183,27 @@ def _print_summary(s: dict) -> None:
     print(f"  PoF         : {s['All results PoF (mean)']:>12.4f}  "
           f"± {s['All results PoF (std)']:.4f}  "
           f"[{s['All results PoF (min)']:.4f} – {s['All results PoF (max)']:.4f}]")
-    print(f"  Median Run Cluster Fair Costs (mean): {s['Median Run Cluster Fair Costs (mean)']}\n")
-    print(f"  Median Run Cluster Fair Costs (std): {s['Median Run Cluster Fair Costs (std)']}\n")
-    print(f"  Median Run Cluster Unfair Costs (mean): {s['Median Run Cluster Unfair Costs (mean)']}\n")
-    print(f"  Median Run Cluster Unfair Costs (std): {s['Median Run Cluster Unfair Costs (std)']}\n")
 
-    print(f" Median Trial Fair Cluster Price of Fairness: \n")
-    for cluster_idx, cost in s["Median Fair Trial Fair Cluster Price of Fairness"].items():
-        print(f"    {cluster_idx}: {cost}\n")
+    if s.get("G-PoF means"):
+        print(f"\n  Per-Group G-PoF:")
+        for g in s["G-PoF means"]:
+            m = s["G-PoF means"][g]
+            sd = s["G-PoF stds"][g]
+            print(f"    {str(g):20s}: {m:.4f} ± {sd:.4f}")
+        gs = s["G-PoF spreads"]
+        gg = s["G-PoF Ginis"]
+        print(f"  G-PoF Spread: {np.mean(gs):.4f} ± {np.std(gs, ddof=1) if len(gs) > 1 else 0:.4f}")
+        print(f"  G-PoF Gini:   {np.mean(gg):.4f} ± {np.std(gg, ddof=1) if len(gg) > 1 else 0:.4f}")
 
-    print(f" Median Trial Unfair Cluster Price of Fairness: \n")
-    for cluster_idx, cost in s["Median Fair Trial Unfair Cluster Price of Fairness"].items():
-        print(f"    {cluster_idx}: {cost}\n")
+    cs = s.get("C-PoF spreads", [])
+    cg = s.get("C-PoF Ginis", [])
+    if cs:
+        print(f"\n  C-PoF Spread: {np.mean(cs):.4f} ± {np.std(cs, ddof=1) if len(cs) > 1 else 0:.4f}")
+        print(f"  C-PoF Gini:   {np.mean(cg):.4f} ± {np.std(cg, ddof=1) if len(cg) > 1 else 0:.4f}")
 
-    print(f" Median Fair Trial Clustering Price of Fairness: \n")
-    for cluster_idx, cpof in s["Median Fair Trial Clustering Price of Fairness"].items():
-        print(f"    {cluster_idx}: {cpof}\n")
+    print(f"\n  Avg Timing: {s['Avg Timing']}")
+    print(f"{'=' * 60}")
 
-    print(f"  Median Run Timing: {s['Median Run Timing']}\n")
-    print(f"  Avg Timing: {s['Avg Timing']}\n")
-    print(f"  Fair costs: {s['_fair_costs']}\n")
-    print(f"  Unfari costs: {s['_unfair_costs']}\n")
-    print(f"  All timings: {s['_timings']}\n")
-
-    print(f"{'='*60}")
 
 
 def build_bera_result(raw) -> TrialOutput:
