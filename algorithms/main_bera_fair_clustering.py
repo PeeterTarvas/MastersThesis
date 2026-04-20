@@ -183,7 +183,7 @@ def iterative_rounding(
             A_eq=a_equality.tocsc(),
             b_eq=b_equality,
             bounds=[(0.0, 1.0)] * nr_vars_lp,
-            method='highs',
+            method='highs-ds',
             options={'disp': False, 'presolve': True},
         )
 
