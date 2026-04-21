@@ -44,7 +44,6 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         )
         print(f"  Run {run_id + 1}/{n_runs}  |  shape={df.shape}")
 
-        # If df is empty here, the problem is in load_csv_chunked or the CSV file itself.
         if df.empty:
             raise ValueError("Dataframe is empty immediately after loading. Check your CSV and load_csv_chunked logic.")
         df = csv_loader.preprocess_dataset(df, group_id_features)
@@ -76,14 +75,12 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         all_group_costs_unfair.append(group_uc)
         all_gpofs.append(gpof)
 
-    # Aggregate timing
     all_keys = set().union(*all_timings)
     avg_timing: dict[str, float] = {
         k: float(np.mean([t.get(k, 0.0) for t in all_timings]))
         for k in sorted(all_keys)
     }
 
-    # Aggregate per-group PoF
     all_group_names = list(all_gpofs[0].keys()) if all_gpofs else []
     gpof_means, gpof_stds = {}, {}
     for g in all_group_names:
@@ -92,14 +89,12 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         gpof_means[g] = float(np.mean(valid)) if valid else float("inf")
         gpof_stds[g] = float(np.std(valid, ddof=1)) if len(valid) > 1 else 0.0
 
-    # Aggregate per-cluster PoF (pooled)
     pooled_cpof_values = []
     for cpof_dict in all_cpofs:
         for v in cpof_dict.values():
             if v != float("inf"):
                 pooled_cpof_values.append(v)
 
-    # Per-run equity metrics
     cpof_spreads, cpof_ginis = [], []
     for cpof_dict in all_cpofs:
         vals = [v for v in cpof_dict.values() if v != float("inf")]
@@ -320,6 +315,47 @@ def build_boehm_result(raw) -> TrialOutput:
     )
     return TrialOutput(fair_result=fair_result, unfair_result=unfair_result, timing=timing)
 
+def build_backurs_result(raw) -> TrialOutput:
+    """
+    Builder for main_backurs_fair_clustering.fair_clustering().
+
+    Return signature:
+        unfair_centers, unfair_labels, unfair_cost,
+        fair_centers, fair_labels, fair_cost, timing,
+        x, group_codes, group_names,
+        lower_bounds, upper_bounds
+    """
+    (unfair_centers, unfair_labels, unfair_cost,
+     fair_centers, fair_labels, fair_cost, timing,
+     x, group_codes, group_names,
+     lower_bounds, upper_bounds) = raw
+
+    weights = np.ones(len(fair_labels))
+
+    fair_result = make_result(
+        algorithm="backurs",
+        centers=fair_centers,
+        labels=fair_labels,
+        fair_cost=fair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+        timing=timing,
+    )
+    unfair_result = make_result(
+        algorithm="kmedian-unfair-baseline",
+        centers=unfair_centers,
+        labels=unfair_labels,
+        fair_cost=unfair_cost,
+        unfair_cost=unfair_cost,
+        X=x,
+        weights=weights,
+        group_codes=group_codes,
+        group_names=group_names,
+    )
+    return TrialOutput(fair_result=fair_result, unfair_result=unfair_result, timing=timing)
 
 if __name__ == "__main__":
 
@@ -378,3 +414,4 @@ if __name__ == "__main__":
         alpha=ALPHA,
         weight_col=None
     )
+
