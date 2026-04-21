@@ -459,6 +459,14 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
 
     return all_fairlets
 
+def get_fairlet_medoid(fairlet, points):
+    if len(fairlet) == 1:
+        return fairlet[0]
+    pts = points[fairlet]
+    # pairwise L1 cost from each member to all others
+    costs = np.abs(pts[:, None] - pts[None, :]).sum(axis=2).sum(axis=1)
+    return fairlet[int(np.argmin(costs))]
+
 
 def cluster_fairlets(points: np.ndarray, fairlets: list[list[int]],
                      k: int, kmedian_trials: int = 5,
@@ -472,7 +480,7 @@ def cluster_fairlets(points: np.ndarray, fairlets: list[list[int]],
     """
     n_points = len(points)
 
-    representative_ids = np.array([f[0] for f in fairlets])
+    representative_ids = np.array([get_fairlet_medoid(f, points) for f in fairlets])
     representative_coords = points[representative_ids]
     fairlet_sizes = np.array([float(len(f)) for f in fairlets])
 

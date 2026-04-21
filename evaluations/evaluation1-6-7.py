@@ -9,14 +9,6 @@ from results_encoder import save_summary
 from runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result, build_backurs_result
 
 
-N_SIZE = 500
-FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
-GROUP_ID_FEATURES = ["RACE_6"]
-PROTECTED_COL = "GROUP_ID"
-K = 10
-ALPHA = 0.05
-N_RUNS = 3
-
 ALG_PALETTE = {
     "Bera": "#4C72B0",
     "Bercea": "#DD8452",
@@ -428,10 +420,18 @@ def print_eval7_table(summaries: dict[str, dict]) -> None:
 
 
 if __name__ == "__main__":
+    N_SIZE = 1000
+    FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
+    GROUP_ID_FEATURES = ["RACE_6"]
+    PROTECTED_COL = "GROUP_ID"
+    K = 10
+    ALPHA = 0.05
+    N_RUNS = 3
+
     summaries: dict[str, dict] = {}
 
     print(f"\n{'#' * 60}")
-    print(f"  Running Bera et al. [2]")
+    print(f"  Running Bera")
     print(f"{'#' * 60}")
     bera_summary = run_trials(
         max_rows=N_SIZE,
@@ -449,7 +449,7 @@ if __name__ == "__main__":
     save_summary(bera_summary, "eval167_bera_summary.json")
 
     print(f"\n{'#' * 60}")
-    print(f"  Running Bercea et al. [3]")
+    print(f"  Running Bercea")
     print(f"{'#' * 60}")
     bercea_summary = run_trials(
         max_rows=N_SIZE,
@@ -467,7 +467,7 @@ if __name__ == "__main__":
     save_summary(bercea_summary, "eval167_bercea_summary.json")
 
     print(f"\n{'#' * 60}")
-    print(f"  Running Böhm et al. [4]")
+    print(f"  Running Böhm")
     print(f"{'#' * 60}")
     boehm_summary = run_trials(
         max_rows=N_SIZE,
@@ -485,7 +485,7 @@ if __name__ == "__main__":
     save_summary(boehm_summary, "eval167_boehm_summary.json")
 
     print(f"\n{'#' * 60}")
-    print(f"  Running Backurs et al. [5]")
+    print(f"  Running Backurs")
     print(f"{'#' * 60}")
     backurs_summary = run_trials(
         max_rows=N_SIZE,

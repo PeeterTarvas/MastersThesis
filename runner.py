@@ -10,12 +10,15 @@ from evaluate import ClusteringResult, make_result, compute_pof, compute_cluster
 from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
+from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+
 
 class TrialOutput(NamedTuple):
     """Everything run_trials needs from one completed trial."""
     fair_result: ClusteringResult
     unfair_result: ClusteringResult
     timing: dict[str, float]
+
 
 
 def run_trials(max_rows, algorithm_fn: Callable[..., Any],
@@ -33,8 +36,11 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
     all_gpofs: list[dict] = []
     trial_outputs: list[TrialOutput] = []
 
-    for run_id in range(n_runs):
-        seed = np.random.SeedSequence().entropy % (2 ** 31)
+    master_ss = np.random.SeedSequence(12345)
+    child_seeds = master_ss.spawn(n_runs)
+
+    for run_id, child_ss in enumerate(child_seeds):
+        seed = int(child_ss.generate_state(1)[0] % (2 ** 31))
 
         df = csv_loader.load_csv_chunked(
             "../us_census_puma_data.csv",
@@ -61,12 +67,13 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         pofs.append(pof)
         all_timings.append(trial.timing)
 
-        cluster_fc = compute_cluster_costs(trial.fair_result)
-        cluster_uc = compute_cluster_costs(trial.unfair_result)
-        cpof = compute_cluster_pof(trial.fair_result, trial.unfair_result)
-        all_cluster_fair_costs.append(cluster_fc)
-        all_cluster_unfair_costs.append(cluster_uc)
-        all_cpofs.append(cpof)
+        if trial.fair_result.algorithm.lower() in ("bera", "bercea"):
+            cluster_fc = compute_cluster_costs(trial.fair_result)
+            cluster_uc = compute_cluster_costs(trial.unfair_result)
+            cpof = compute_cluster_pof(trial.fair_result, trial.unfair_result)
+            all_cluster_fair_costs.append(cluster_fc)
+            all_cluster_unfair_costs.append(cluster_uc)
+            all_cpofs.append(cpof)
 
         group_fc = compute_group_costs(trial.fair_result)
         group_uc = compute_group_costs(trial.unfair_result)
@@ -403,6 +410,7 @@ if __name__ == "__main__":
     print("  RUNNING BERA ET AL. (Iterative Rounding)")
     print("=" * 60)
     bercea_summary = run_trials(
+        max_rows=ROW_SIZE,
         algorithm_fn=bercea_fc,
         result_builder=build_bercea_result,
         group_id_features=GROUP_ID_FEATURES,

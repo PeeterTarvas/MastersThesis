@@ -147,15 +147,15 @@ def fair_clustering(
         feature_cols: list[str],
         protected_group_col: str,
         k: int,
-        kmedian_trials: int = 3,
-        kmedian_max_iter: int = 30,
-        random_seed: Optional[int] = 42
+        kmedian_trials,
+        kmedian_max_iter,
+        random_seed
 ) -> tuple[ndarray, ndarray, float, dict[Any, Any], ndarray, ndarray, float, int, Any, ndarray, list, DataFrame, Any]:
     timing = {}
     t_start = time.perf_counter()
 
     t0 = time.perf_counter()
-    df_balanced, size_pruned_to = balance_dataset_for_boehm(df, group_col=protected_group_col, random_seed=42)
+    df_balanced, size_pruned_to = balance_dataset_for_boehm(df, group_col=protected_group_col, random_seed=random_seed)
     weights = df_balanced['_boehm_weight'].to_numpy(dtype=np.float64)
     timing["Balance Dataset"] = time.perf_counter() - t0
 
@@ -183,8 +183,9 @@ def fair_clustering(
                                                                  k_centers=k,
                                                                  n_trials=kmedian_trials,
                                                                  weights=weights,
-                                                                 max_iter=kmedian_max_iter)
-    # Majority-vote each original row's label across its replicated copies
+                                                                 max_iter=kmedian_max_iter,
+                                                                 random_seed=random_seed)
+    # majority-vote each original row's label across its replicated copies
     labels_series = pd.Series(fair_labels, index=df_balanced['_orig_idx'].to_numpy())
     fair_labels_orig = (labels_series
                         .groupby(level=0)
