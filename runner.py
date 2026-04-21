@@ -386,7 +386,7 @@ if __name__ == "__main__":
 
     print("  RUNNING BERCEA ET AL. (Proportional Bounds)")
     print("=" * 60)
-    bera_result, bera_summary = run_trials(
+    bera_summary = run_trials(
         max_rows=ROW_SIZE,
         algorithm_fn=bera_fc,
         result_builder=build_bera_result,
@@ -402,7 +402,7 @@ if __name__ == "__main__":
 
     print("  RUNNING BERA ET AL. (Iterative Rounding)")
     print("=" * 60)
-    bercea_result, bercea_summary = run_trials(
+    bercea_summary = run_trials(
         algorithm_fn=bercea_fc,
         result_builder=build_bercea_result,
         group_id_features=GROUP_ID_FEATURES,
