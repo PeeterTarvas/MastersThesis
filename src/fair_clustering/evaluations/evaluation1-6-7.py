@@ -1,13 +1,13 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
-from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
-from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
-from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
-from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
-from results_encoder import save_summary
-from runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result, build_backurs_result
-
+from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
+from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
+from fair_clustering.algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
+from fair_clustering.algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+from fair_clustering.results_encoder import save_summary
+from fair_clustering.runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result, \
+    build_backurs_result
 
 ALG_PALETTE = {
     "Bera": "#4C72B0",
@@ -16,7 +16,7 @@ ALG_PALETTE = {
     "Backurs": "#AAA868",
 }
 PALETTE_LIST = ["#4C72B0", "#DD8452", "#55A868", "#C44E52",
-                 "#8172B3", "#937860", "#DA8BC3", "#8C8C8C"]
+                "#8172B3", "#937860", "#DA8BC3", "#8C8C8C"]
 
 
 def plot_eval1_pof_bar(summaries: dict[str, dict]) -> None:
@@ -98,7 +98,7 @@ def print_eval1_table(summaries: dict[str, dict]) -> None:
         )
 
     print(sep)
-    csv_path = "./evaluation1-6-7_results.csv"
+    csv_path = "evaluation1-6-7_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"  Results saved to {csv_path}")
@@ -256,11 +256,10 @@ def print_eval6_table(summaries: dict[str, dict]) -> None:
         print(f"  Spread: {np.mean(spreads):.4f} ± {np.std(spreads, ddof=1) if len(spreads) > 1 else 0:.4f}")
         print(f"  Gini:   {np.mean(ginis):.4f} ± {np.std(ginis, ddof=1) if len(ginis) > 1 else 0:.4f}")
 
-    csv_path = "./evaluation1-6-7_results.csv"
+    csv_path = "evaluation1-6-7_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
-
 
 
 def plot_eval7_gpof_bar(summaries: dict[str, dict]) -> None:
@@ -362,6 +361,8 @@ def plot_eval7_gpof_per_run_heatmap(summaries: dict[str, dict]) -> None:
                        interpolation="nearest")
         ax.set_xticks(range(len(group_names)))
         ax.set_xticklabels(group_names, fontsize=8, rotation=30, ha="right")
+        ax.set_yticks(range(n_runs))
+
         ax.set_ylabel("Run #", fontsize=10)
         ax.set_title(f"{alg}", fontsize=11)
         fig.colorbar(im, ax=ax, shrink=0.8, label="G-PoF")
@@ -413,7 +414,7 @@ def print_eval7_table(summaries: dict[str, dict]) -> None:
         print(f"  Equity Spread: {np.mean(spreads):.4f} ± {np.std(spreads, ddof=1) if len(spreads) > 1 else 0:.4f}")
         print(f"  Gini:          {np.mean(ginis):.4f} ± {np.std(ginis, ddof=1) if len(ginis) > 1 else 0:.4f}")
 
-    csv_path = "./evaluation1-6-7_results.csv"
+    csv_path = "evaluation1-6-7_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
@@ -439,6 +440,7 @@ if __name__ == "__main__":
         result_builder=build_bera_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../../../us_census_puma_data.csv",
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_centers=K,
@@ -457,6 +459,7 @@ if __name__ == "__main__":
         result_builder=build_bercea_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../../../us_census_puma_data.csv",
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_cluster=K,
@@ -475,6 +478,7 @@ if __name__ == "__main__":
         result_builder=build_boehm_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../../../us_census_puma_data.csv",
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k=K,
@@ -493,6 +497,7 @@ if __name__ == "__main__":
         result_builder=build_backurs_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../../../us_census_puma_data.csv",
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_cluster=K,

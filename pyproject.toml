@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling >= 1.26", "wheel"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fair_clustering"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "networkx",
+    "matplotlib",
+    "polars",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

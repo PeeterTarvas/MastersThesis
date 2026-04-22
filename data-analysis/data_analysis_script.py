@@ -1,6 +1,6 @@
 import pandas as pd
 import json
-from csv_loader import load_csv_chunked
+from fair_clustering.csv_loader import load_csv_chunked
 
 BIN_EDGES = [0, 25, 45, 65, 120]
 BIN_LABELS = ['Youth', 'YoungAdult', 'Adult', 'Senior']

@@ -6,13 +6,13 @@ import warnings
 import numpy as np
 import pandas as pd
 
-import csv_loader
-from evaluate import (
+from fair_clustering import csv_loader
+from fair_clustering.evaluate import (
     make_result, evaluate, audit_fairness_proportional,
     plot_execution_times, plot_spatial_clusters,
     plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown,
 )
-from kmedian import kmedian, pairwise_l1
+from fair_clustering.kmedian import kmedian, pairwise_l1
 
 def compute_rb(p_base: float, alpha: float, max_r: int = 10) -> tuple[int, int]:
     """
@@ -546,22 +546,18 @@ def fair_clustering(
         random_seed=random_seed,
     )
     timing['Vanilla K-Median'] = time.perf_counter() - t0
-    print(f"[Backurs] Unfair k-median cost: {unfair_cost:,.2f}")
 
     t0 = time.perf_counter()
 
     if n_groups <= 2:
         # only one meaningful if binary attributes
         best_base = 0
-        print(f"[Backurs] Binary case -- base='{group_names[0]}'")
     else:
         # L one-vs-rest decompositions: quick cost estimation
         # NOTE: Singletons contribute 0 to intra-fairlet cost but provide
         # no fairness enforcement.  We penalize uncovered (singleton) points
         # using the average per-point cost of multi-point fairlets as a
         # surrogate for the cost they would pay if forced into fairlets.
-        print(f"[Backurs] One-vs-rest base selection "
-              f"({n_groups} decompositions)...")
         base_costs: dict[int, float] = {}
         for base_c in range(n_groups):
             binary = np.where(
@@ -595,12 +591,8 @@ def fair_clustering(
             base_costs[base_c] = cost_try
 
         best_base = min(base_costs, key=base_costs.get)
-        for c, cost in base_costs.items():
-            print(f"  base '{group_names[c]}': adjusted cost = {cost:,.0f}"
-                  f"{'  <-- best' if c == best_base else ''}")
 
     timing['Base Selection'] = time.perf_counter() - t0
-    print(f"[Backurs] Chosen base colour: '{group_names[best_base]}'")
 
     t0 = time.perf_counter()
     binary_colours = np.where(
@@ -608,8 +600,6 @@ def fair_clustering(
     ).astype(np.int32)
     p_base = (binary_colours == 0).sum() / dataset_length
     r_final, b_final = compute_rb(p_base, alpha)
-    print(f"[Backurs] (r={r_final}, b={b_final})  "
-          f"balance >= {b_final / (r_final + b_final)}")
 
     hst_root = build_hst(x, gamma=gamma, random_seed=random_seed + best_base)
     timing['HST Construction'] = time.perf_counter() - t0
@@ -622,10 +612,6 @@ def fair_clustering(
     covered = sum(len(f) for f in fairlets)
     avg_size = covered / n_fairlets if n_fairlets else 0
     singleton_count = sum(1 for f in fairlets if len(f) == 1)
-    print(f"[Backurs] {n_fairlets} fairlets  "
-          f"(avg size {avg_size:.1f}, "
-          f"{singleton_count} singletons, "
-          f"covering {covered}/{dataset_length} points)")
     validate_fairlets(fairlets, binary_colours, r_final, b_final, dataset_length)
 
     t0 = time.perf_counter()
@@ -640,9 +626,6 @@ def fair_clustering(
     timing['Total Time'] = time.perf_counter() - t_start
 
     pof = fair_cost / unfair_cost if unfair_cost > 0 else float('inf')
-    print(f"[Backurs] Fair cost: {fair_cost:,.2f}   "
-          f"Unfair cost: {unfair_cost:,.2f}   "
-          f"PoF: {pof:.4f}")
 
     return (unfair_centers, unfair_labels, unfair_cost, fair_centers,
             fair_labels, fair_cost, timing,
@@ -655,7 +638,6 @@ def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
                           group_names: list) -> int:
     required_balance = b / r
     violations = 0
-    print(f"\n[Balance Audit] Required >= {required_balance:.3f}")
     for j in range(k):
         mask = labels == j
         cluster_size = int(mask.sum())
@@ -667,10 +649,7 @@ def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
                    if n_red > 0 and n_blue > 0 else 0.0)
         if balance < required_balance - 1e-6:
             violations += 1
-            print(f"  ⚠ Cluster {j}: {group_names[0]}={n_red}, "
-                  f"{group_names[1]}={n_blue}, balance={balance:.3f}")
-    if violations == 0:
-        print(f"  ✓ All {k} clusters satisfy ({r},{b})-balance.")
+
     return violations
 
 if __name__ == "__main__":

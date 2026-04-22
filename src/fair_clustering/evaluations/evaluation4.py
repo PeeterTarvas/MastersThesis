@@ -2,11 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
 
-from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
-from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
-from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
+from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
+from fair_clustering.algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
 
-from runner import run_trials, build_bera_result, build_bercea_result, build_backurs_result
+from fair_clustering.runner import run_trials, build_bera_result, build_bercea_result, build_backurs_result
 
 ALPHAS = [0.01, 0.02, 0.05, 0.1, 0.2]
 
@@ -166,7 +166,7 @@ def print_alpha_table(rows: list[dict]) -> None:
             )
 
     print(sep)
-    csv_path = "./evaluation4_results.csv"
+    csv_path = "evaluation4_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
@@ -193,6 +193,7 @@ if __name__ == "__main__":
                 result_builder=build_bera_result,
                 group_id_features=feature_cfg["group_id_features"],
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_centers=K,
@@ -222,6 +223,7 @@ if __name__ == "__main__":
                 result_builder=build_bercea_result,
                 group_id_features=feature_cfg["group_id_features"],
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_cluster=K,
@@ -251,6 +253,7 @@ if __name__ == "__main__":
                 result_builder=build_backurs_result,
                 group_id_features=feature_cfg["group_id_features"],
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_cluster=K,

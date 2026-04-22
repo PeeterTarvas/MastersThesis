@@ -10,10 +10,10 @@ from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import kron, eye, lil_matrix
 import time
-from evaluate import plot_execution_times, make_result, audit_fairness_proportional, evaluate, \
+from fair_clustering.evaluate import plot_execution_times, make_result, audit_fairness_proportional, evaluate, \
     plot_spatial_clusters, plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown
-from kmedian import kmedian, pairwise_l1
-import csv_loader
+from fair_clustering.kmedian import kmedian, pairwise_l1
+from fair_clustering import csv_loader
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
@@ -188,11 +188,6 @@ def iterative_rounding(
         )
 
         if result.status != 0:
-            print(
-                f"[Rounding] LP2 infeasible at iter {iter} "
-                f"(status {result.status}). "
-                "Assigning remaining points greedily."
-            )
             for i in still_unassigned:
                 labels[i] = int(np.argmin(D[i]))
             break
@@ -266,12 +261,6 @@ def audit_fairness(
             if frac < lower_bounds[h] - 1e-4 or frac > upper_bounds[h] + 1e-4:
                 violations += 1
 
-    if violations == 0:
-        print("[FairClustering] ✓ All clusters satisfy fairness bounds.")
-    else:
-        print(f"[FairClustering] ⚠  {violations} (cluster, group) pairs violate bounds "
-              "(additive violations ≤ 1 are expected by Lemma 7).")
-
 
 def fair_clustering(
     df: pd.DataFrame,
@@ -299,20 +288,11 @@ def fair_clustering(
         weights = np.ones(len(x), dtype=np.float64)
     group_codes, group_names = encode_groups_to_int(df[protected_group_col])
     nr_of_groups = len(group_names)
-    print(f"\n{'='*60}")
-    print(f"  n={len(x):,}  k={k_centers}  groups={nr_of_groups} ")
-    print(f"{'='*60}")
 
     if lower_bounds is None or upper_bounds is None:
         lower_bounds, upper_bounds = proportional_bounds(
             group_codes, weights, nr_of_groups, alpha
         )
-        total_w = weights.sum()
-        print(f"\n[FairClustering] Proportional bounds (alpha={alpha}):")
-        for h, name in enumerate(group_names):
-            f_h = weights[group_codes == h].sum() / total_w
-            print(f"  Group '{name}': freq={f_h:.3f}  "
-                  f"bounds=[{lower_bounds[h]:.3f}, {upper_bounds[h]:.3f}]")
 
     if lower_bounds.sum() > 1.0 + 1e-6:
         warnings.warn(
@@ -327,8 +307,6 @@ def fair_clustering(
     timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
     t_start_kmedian = time.perf_counter()
-    print(f"\nVanilla k-median (trials={kmedian_trials}, "
-          f"max_iter={kmedian_max_iter}) ...")
     unfair_centers, unfair_labels, unfair_cost = kmedian(
         x, k_centers,
         _weights=weights,
@@ -337,11 +315,8 @@ def fair_clustering(
         random_seed=random_seed,
     )
     timing['Vanilla K-Median'] = time.perf_counter() - t_start_kmedian
-    print(f"  → Unfair k-median cost: {unfair_cost:,.2f}")
 
     t_start_lp = time.perf_counter()
-    print(f"\nSolving Fair LP relaxation  "
-          f"(n_vars = {len(x) * k_centers:,}, n_constraints ≈ {len(x) + 2*nr_of_groups*k_centers:,}) ...")
     x_lp = solve_fair_lp(x, unfair_centers, weights, group_codes, lower_bounds, upper_bounds)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
 
@@ -351,9 +326,6 @@ def fair_clustering(
         weights,
         (distsances_to_centers * x_lp).sum(axis=1)
     ))
-    print(f"  → LP fractional cost:   {lp_cost:,.2f}")
-    print(f"  → Integrality gap hint: "
-          f"{lp_cost / unfair_cost:.3f}x unfair cost")
     fair_labels = iterative_rounding(
          weights, group_codes, x_lp, distsances_to_centers
     )
@@ -361,13 +333,10 @@ def fair_clustering(
 
     t_start_cost = time.perf_counter()
     fair_cost = float(np.dot(weights, distsances_to_centers[np.arange(len(x)), fair_labels]))
-    print(f"  → Fair (integral) cost: {fair_cost:,.2f}")
 
     audit_fairness(fair_labels, group_codes, weights, group_names,
                    lower_bounds, upper_bounds, k_centers)
 
-    print(f"  → Price of Fairness:    {fair_cost / unfair_cost:.4f}x  "
-          f"(1.0 = fairness is free)")
     timing['Cost Calculation'] = time.perf_counter() - t_start_cost
 
     timing['Total Time'] = time.perf_counter() - t_start

@@ -141,7 +141,6 @@ def preprocess_dataset(df: pd.DataFrame,
     df_core['RACE6_SEX'] = df_core['RACE_6'].astype(str) + '|' + df_core['SEX_LABEL'].astype(str)
 
     # ---- fair-clustering group id -------------------------------------------
-    print(f"Generating GROUP_ID from: {group_id_features}")
     df_core['GROUP_ID'] = df_core[group_id_features].astype(str).agg('|'.join, axis=1)
 
     # ---- spatial clustering features ----------------------------------------

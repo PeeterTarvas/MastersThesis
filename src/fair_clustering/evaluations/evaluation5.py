@@ -1,15 +1,14 @@
-import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
 
-from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
-from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
-from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
-from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
-from evaluations.evaluation4 import _avg_total_time
+from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
+from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
+from fair_clustering.algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+from fair_clustering.algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
+from fair_clustering.evaluations.evaluation4 import _avg_total_time
 
-from runner import (run_trials, build_bera_result, build_bercea_result,
-                    build_backurs_result, build_boehm_result)
+from fair_clustering.runner import (run_trials, build_bera_result, build_bercea_result,
+                                    build_backurs_result, build_boehm_result)
 #15, 20, 35, 50
 K_VALUES = [3, 5, 10]
 FEATURE_CFG = {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094}
@@ -166,7 +165,7 @@ def print_k_table(rows: list[dict]) -> None:
         csv_lines.append(",".join(parts))
 
     print(sep)
-    csv_path = "./evaluation5_results.csv"
+    csv_path = "evaluation5_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
@@ -189,6 +188,7 @@ if __name__ == "__main__":
         bera_s = run_trials(
             max_rows=N_SIZE, algorithm_fn=bera_fc, result_builder=build_bera_result,
             group_id_features=FEATURE_CFG["group_id_features"], n_runs=N_RUNS,
+            csv_path="../../../us_census_puma_data.csv",
             feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
             k_centers=k, alpha=ALPHA, weight_col=None,
         )
@@ -210,6 +210,7 @@ if __name__ == "__main__":
         bercea_s = run_trials(
             max_rows=N_SIZE, algorithm_fn=bercea_fc, result_builder=build_bercea_result,
             group_id_features=FEATURE_CFG["group_id_features"], n_runs=N_RUNS,
+            csv_path="../../../us_census_puma_data.csv",
             feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
             k_cluster=k, alpha=ALPHA, weight_col=None,
         )
@@ -230,6 +231,7 @@ if __name__ == "__main__":
         backurs_s = run_trials(
             max_rows=N_SIZE, algorithm_fn=backurs_fc, result_builder=build_backurs_result,
             group_id_features=FEATURE_CFG["group_id_features"], n_runs=N_RUNS,
+            csv_path="../../../us_census_puma_data.csv",
             feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
             k_cluster=k, alpha=ALPHA,
         )
@@ -250,6 +252,7 @@ if __name__ == "__main__":
             max_rows=N_SIZE, algorithm_fn=boehm_fc,
             result_builder=build_boehm_result,
             group_id_features=FEATURE_CFG["group_id_features"], n_runs=N_RUNS,
+            csv_path="../../../us_census_puma_data.csv",
             feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
             k=k, kmedian_trials=3, kmedian_max_iter=30,
         )

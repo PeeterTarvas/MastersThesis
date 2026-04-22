@@ -6,15 +6,16 @@ from numpy import ndarray, dtype, floating
 from numpy._typing import _64Bit
 from scipy.optimize import linprog
 from scipy.sparse import lil_matrix, kron, eye
-import csv_loader
+from fair_clustering import csv_loader
 
 import numpy as np
 import pandas as pd
 import time
 
-from evaluate import make_result, evaluate, audit_fairness_proportional, plot_execution_times, plot_spatial_clusters, \
+from fair_clustering.evaluate import make_result, evaluate, audit_fairness_proportional, plot_execution_times, \
+    plot_spatial_clusters, \
     plot_cluster_pof, plot_pof_comparison, plot_group_pof, plot_cost_breakdown
-from kmedian import kmedian, pairwise_l1
+from fair_clustering.kmedian import kmedian, pairwise_l1
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
@@ -211,14 +212,8 @@ def fair_clustering(
 
     nr_of_groups = len(group_names)
 
-    print(f"[FairClustering] n={len(x):,}  k={k_cluster}  groups={nr_of_groups}  "
-          f"weighted={'yes' if weight_col and weight_col in df.columns else 'no (uniform)'}")
-
     if lower_bound is None or upper_bound is None:
         lower_bound, upper_bound = proportional_bounds(group_codes, weights, nr_of_groups, alpha)
-        print(f"[FairClustering] Proportional bounds (alpha={alpha}):")
-        for h, lbl in enumerate(group_names):
-            print(f"  {lbl}: [{lower_bound[h]:.3f}, {upper_bound[h]:.3f}]")
 
     total = weights.sum()
     f = np.array([weights[group_codes == h].sum() / total for h in range(nr_of_groups)])
@@ -232,7 +227,6 @@ def fair_clustering(
     timing['Data Preparation'] = time.perf_counter() - t_start_prep
 
     t_start_kmedian = time.perf_counter()
-    print("k-median for centering")
     centers, unfair_labels, unfair_cost = kmedian(
         x, k_cluster, _weights=weights,
         n_trials=kmedian_trials,
@@ -242,14 +236,9 @@ def fair_clustering(
     timing['Vanilla K-Median'] = time.perf_counter() - t_start_kmedian
 
     t_start_lp = time.perf_counter()
-    print(f"Unfair k-median cost: {unfair_cost:,.2f}")
-    print("Solving Fair LP...")
     x_lp = solve_fair_lp(x, centers, weights, group_codes, lower_bound, upper_bound)
     timing['Solve Initial LP'] = time.perf_counter() - t_start_lp
 
-    print(f"LP fractional cost: {float(np.dot(weights, (pairwise_l1(x, centers) * x_lp).sum(axis=1))):,.2f}")
-
-    print("Min-cost flow rounding...")
     t_start_rounding = time.perf_counter()
     distances_to_centers = pairwise_l1(x, centers)
     labels = min_cost_flow_rounding(x_lp, group_codes, weights, distances_to_centers)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Any
+from typing import Any
 
 import pandas as pd
 from numpy import ndarray
@@ -9,13 +9,14 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 import time
-from kmedian import kmedian, pairwise_l1
+from fair_clustering.kmedian import kmedian, pairwise_l1
 
 import numpy as np
-import csv_loader
-from evaluate import make_result, evaluate, audit_fairness_exact_balance, plot_pof_comparison, plot_group_pof, \
+from fair_clustering import csv_loader
+from fair_clustering.evaluate import make_result, evaluate, audit_fairness_exact_balance, plot_pof_comparison, \
+    plot_group_pof, \
     plot_cost_breakdown
-from evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_pof
+from fair_clustering.evaluate import plot_execution_times, plot_spatial_clusters, plot_cluster_pof
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
@@ -25,7 +26,6 @@ def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
 
 def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> tuple[pd.DataFrame, int]:
     group_counts = df[group_col].value_counts()
-    print(group_counts)
     size_for_all_groups = group_counts.max()
     rng = np.random.default_rng(random_seed)
     dfs = []
@@ -48,8 +48,6 @@ def balance_dataset_for_boehm(df: pd.DataFrame, group_col: str, random_seed) -> 
         df_for_group['_boehm_weight'] = 1.0
         dfs.append(df_for_group)
     balanced_df = pd.concat(dfs).sample(frac=1, random_state=random_seed).reset_index(drop=True)
-    print(f"Sampled to size {size_for_all_groups} per group (weighted): \n")
-    print(balanced_df.head())
     return balanced_df, size_for_all_groups
 
 
@@ -73,7 +71,6 @@ def boehm_fair_clustering(
     best_overall_centers = None
 
     for baseline_color in unique_groups:
-        print(f"  Evaluating baseline group {baseline_color}...")
         # to store this trials assignments back to original
         trial_labels = np.full(total_points, -1, dtype=np.int32)
         centers, base_labels, _ = kmedian(
@@ -97,7 +94,6 @@ def boehm_fair_clustering(
 
         distance_to_all = pairwise_l1(x, centers)
         trial_cost = float((weights * distance_to_all[np.arange(total_points), trial_labels]).sum())
-        print(f"    -> Cost with baseline {baseline_color}: {trial_cost:,.2f}")
         if trial_cost < best_overall_cost:
             best_overall_cost = trial_cost
             best_overall_centers = centers
@@ -111,7 +107,6 @@ def evaluate_fairness(
         group_names: list,
         k: int,
 ):
-    print(f"\n[Evaluation] Fairness check (Böhm Exact Matching):")
     H = len(group_names)
 
     violations = 0
@@ -121,7 +116,6 @@ def evaluate_fairness(
         if total_j == 0:
             continue
 
-        print(f"  Cluster {j:2d} (size {total_j}):")
         for h, name in enumerate(group_names):
             mass_h = (at_j & (group_codes == h)).sum()
             frac = mass_h / total_j
@@ -134,12 +128,6 @@ def evaluate_fairness(
             else:
                 status = "✓"
 
-            print(f"    Group '{name:15s}': {mass_h:4d} pts ({frac * 100:5.1f}%) {status}")
-
-    if violations == 0:
-        print(f"\n  → SUCCESS: All clusters are perfectly balanced.")
-    else:
-        print(f"\n  → WARNING: Found {violations} uneven group distributions.")
 
 
 def fair_clustering(
@@ -273,4 +261,3 @@ if __name__ == "__main__":
     plot_pof_comparison(fair_result, [summary])
     plot_group_pof(fair_result, [summary])
     plot_cost_breakdown(fair_result, [summary])
-    print("Groups pruned to: " + str(size_pruned_to))

@@ -1,13 +1,13 @@
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
-from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
-from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
-from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
-from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
+from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
+from fair_clustering.algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
+from fair_clustering.algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
 
-
-from runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result, build_backurs_result
+from fair_clustering.runner import run_trials, build_bera_result, build_bercea_result, build_boehm_result, \
+    build_backurs_result
 BERA_PHASES = [
     "Data Preparation",
     "Vanilla K-Median",
@@ -212,6 +212,7 @@ if __name__ == "__main__":
                 result_builder=build_bera_result,
                 group_id_features=GROUP_ID_FEATURES,
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_centers=K,
@@ -228,6 +229,7 @@ if __name__ == "__main__":
                 result_builder=build_bercea_result,
                 group_id_features=GROUP_ID_FEATURES,
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_cluster=K,
@@ -245,6 +247,7 @@ if __name__ == "__main__":
                     result_builder=build_boehm_result,
                     group_id_features=GROUP_ID_FEATURES,
                     n_runs=N_RUNS,
+                    csv_path="../../../us_census_puma_data.csv",
                     feature_cols=FEATURE_COLS,
                     protected_group_col=PROTECTED_COL,
                     k=K,
@@ -264,6 +267,7 @@ if __name__ == "__main__":
                 result_builder=build_backurs_result,
                 group_id_features=GROUP_ID_FEATURES,
                 n_runs=N_RUNS,
+                csv_path="../../../us_census_puma_data.csv",
                 feature_cols=FEATURE_COLS,
                 protected_group_col=PROTECTED_COL,
                 k_cluster=K,

@@ -1,16 +1,12 @@
-import json
 from typing import Callable, Any, NamedTuple
 
 import numpy as np
-import pandas as pd
 
-import csv_loader
-from evaluate import ClusteringResult, make_result, compute_pof, compute_cluster_costs, \
+import fair_clustering.csv_loader as csv_loader
+from fair_clustering.evaluate import ClusteringResult, make_result, compute_pof, compute_cluster_costs, \
     compute_cluster_pof, compute_group_costs, compute_gpof
-from algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
-from algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
-from algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
-from algorithms.main_backurs_fair_clustering import fair_clustering as backurs_fc
+from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
+from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 
 
 class TrialOutput(NamedTuple):
@@ -22,7 +18,8 @@ class TrialOutput(NamedTuple):
 
 
 def run_trials(max_rows, algorithm_fn: Callable[..., Any],
-                result_builder: Callable[[Any, int], TrialOutput], group_id_features: list[str], n_runs: int, **kwargs):
+               result_builder: Callable[[Any, int], TrialOutput], group_id_features: list[str], n_runs: int,
+               csv_path: str, **kwargs):
 
     fair_costs: list[float] = []
     unfair_costs: list[float] = []
@@ -43,12 +40,11 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         seed = int(child_ss.generate_state(1)[0] % (2 ** 31))
 
         df = csv_loader.load_csv_chunked(
-            "../us_census_puma_data.csv",
+            csv_path,
             csv_loader.LOAD_COLS,
             max_rows=max_rows,
             random_seed=seed
         )
-        print(f"  Run {run_id + 1}/{n_runs}  |  shape={df.shape}")
 
         if df.empty:
             raise ValueError("Dataframe is empty immediately after loading. Check your CSV and load_csv_chunked logic.")
@@ -57,6 +53,9 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         raw = algorithm_fn(df, random_seed=seed, **kwargs)
         trial: TrialOutput = result_builder(raw)
         trial_outputs.append(trial)
+
+        print(f"  Run {run_id + 1}/{n_runs}  | {trial.fair_result.algorithm} ")
+
 
         fc = trial.fair_result.fair_cost
         uc = trial.fair_result.unfair_cost
@@ -158,7 +157,7 @@ def run_trials(max_rows, algorithm_fn: Callable[..., Any],
         "_all_cluster_unfair_costs": all_cluster_unfair_costs,
     }
 
-    _print_summary(avg_summary)
+    # _print_summary(avg_summary)
     return avg_summary
 
 def _gini(values: list[float]) -> float:
@@ -399,6 +398,7 @@ if __name__ == "__main__":
         result_builder=build_bera_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../us_census_puma_data.csv",
         # Bera specific kwargs:
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
@@ -415,6 +415,7 @@ if __name__ == "__main__":
         result_builder=build_bercea_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
+        csv_path="../us_census_puma_data.csv",
         # Bercea specific kwargs:
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
