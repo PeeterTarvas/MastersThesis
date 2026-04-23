@@ -11,3 +11,6 @@ csv_loader.py -> dataset loading and preprocessing
 evaluate.py -> evaluation methods
 
 kmedian.py -> baseline kmedian
+
+building a package: python -m build --wheel
+installing package locally: pip install -e .  

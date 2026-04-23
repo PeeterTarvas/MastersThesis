@@ -14,9 +14,9 @@ FEATURE_CONFIGS = [
     {"name": "RACE_BINARY", "group_id_features": ["RACE_BINARY"], "L": 2, "DI": 0.288},
     {"name": "AGE_BIN", "group_id_features": ["AGE_BIN"], "L": 4, "DI": 0.042},
     {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094},
-    #{"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.343},
-    #{"name": "AGE_BIN × SEX", "group_id_features": ["AGE_BIN", "SEX"], "L": 8, "DI": 0.040},
-    #{"name": "RACE_6 × SEX", "group_id_features": ["RACE_6", "SEX"], "L": 12, "DI": 0.311},
+    {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.343},
+    {"name": "AGE_BIN × SEX", "group_id_features": ["AGE_BIN", "SEX"], "L": 8, "DI": 0.040},
+    {"name": "RACE_6 × SEX", "group_id_features": ["RACE_6", "SEX"], "L": 12, "DI": 0.311},
 ]
 
 ALGORITHMS = ["Bera", "Bercea", "Backurs", "Böhm"]
@@ -228,11 +228,11 @@ def plot_pof(rows: list[dict]):
     print("  Saved pof_by_feature.png")
 
 if __name__ == "__main__":
-    N_SIZE = 100
+    N_SIZE = 10000
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
-    N_RUNS = 3
+    N_RUNS = 10
     ALPHA = 0.05
 
     all_rows: list[dict] = []

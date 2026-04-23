@@ -11,7 +11,7 @@ from fair_clustering.runner import run_trials, build_bera_result, build_bercea_r
 ALPHAS = [0.01, 0.02, 0.05, 0.1, 0.2]
 
 FEATURE_CONFIGS = [
-    {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094},
+    {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 4, "DI": 0.3453},
 ]
 ALGORITHMS = ["Bera", "Bercea", "Backurs"]
 
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
-    N_RUNS = 3
+    N_RUNS = 10
 
     all_rows: list[dict] = []
 
