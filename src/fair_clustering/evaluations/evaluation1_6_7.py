@@ -58,6 +58,51 @@ def plot_eval1_pof_bar(summaries: dict[str, dict]) -> None:
     print("  Saved eval1_pof_bar_chart.png")
 
 
+def plot_eval1_total_cost_bar(summaries: dict[str, dict]) -> None:
+    algs = list(summaries.keys())
+    fair_means = [summaries[a]["All results Fair Cost (mean)"] for a in algs]
+    fair_stds = [summaries[a]["All results Fair Cost (std)"] for a in algs]
+    unfair_means = [summaries[a]["All results Unfair Cost (mean)"] for a in algs]
+    unfair_stds = [summaries[a]["All results Unfair Cost (std)"] for a in algs]
+
+    x = np.arange(len(algs))
+    width = 0.38
+    fig, ax = plt.subplots(figsize=(max(8, len(algs) * 2.2), 5.5))
+
+    bars_unfair = ax.bar(
+        x - width / 2, unfair_means, width, yerr=unfair_stds, capsize=4,
+        color="lightgray", edgecolor="black", linewidth=0.5,
+        label="Unfair (k-median baseline)", zorder=3,
+    )
+    colors = [ALG_PALETTE.get(a, "gray") for a in algs]
+    bars_fair = ax.bar(
+        x + width / 2, fair_means, width, yerr=fair_stds, capsize=4,
+        color=colors, edgecolor="black", linewidth=0.5,
+        label="Fair", zorder=3,
+    )
+
+    for bar, m, s in zip(bars_unfair, unfair_means, unfair_stds):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + s,
+                f"{m:,.0f}", ha="center", va="bottom", fontsize=8, color="dimgray")
+    for bar, m, s in zip(bars_fair, fair_means, fair_stds):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + s,
+                f"{m:,.0f}", ha="center", va="bottom", fontsize=8, color="dimgray")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(algs, fontsize=11)
+    ax.set_ylabel("Total clustering cost (mean across runs)", fontsize=10)
+    ax.set_title(
+        f"Eval 1 — Total Cost: Fair vs Unfair  (RACE_6, k={K}, α={ALPHA})",
+        fontsize=12,
+    )
+    ax.legend(fontsize=10, loc="upper left")
+    ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
+    fig.tight_layout()
+    fig.savefig("eval1_total_cost_bar.png", dpi=150, bbox_inches="tight")
+    plt.show()
+    print("  Saved eval1_total_cost_bar.png")
+
+
 def print_eval1_table(summaries: dict[str, dict]) -> None:
     header = (
         f"{'Algorithm':<12s}  {'N':>3s}  "
@@ -152,7 +197,6 @@ def plot_eval6_cpof_mean_bar(summaries: dict[str, dict]) -> None:
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_mean_bar.png", dpi=150, bbox_inches="tight")
     plt.show()
-    print("  Saved evaluation1-6-7_cpof_mean_bar.png")
 
 
 def plot_eval6_cpof_pooled_histogram(summaries: dict[str, dict]) -> None:
@@ -182,7 +226,6 @@ def plot_eval6_cpof_pooled_histogram(summaries: dict[str, dict]) -> None:
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_histogram.png", dpi=150, bbox_inches="tight")
     plt.show()
-    print("  Saved evaluation1-6-7_histogram.png")
 
 
 def plot_eval6_cpof_spread_gini(summaries: dict[str, dict]) -> None:
@@ -214,7 +257,6 @@ def plot_eval6_cpof_spread_gini(summaries: dict[str, dict]) -> None:
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_spread_gini.png", dpi=150, bbox_inches="tight")
     plt.show()
-    print("  Saved evaluation1-6-7_cpof_spread_gini.png")
 
 
 def print_eval6_table(summaries: dict[str, dict]) -> None:
@@ -300,7 +342,6 @@ def plot_eval7_gpof_bar(summaries: dict[str, dict]) -> None:
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_gpof_bar.png", dpi=150, bbox_inches="tight")
     plt.show()
-    print("  Saved evaluation1-6-7_gpof_bar.png")
 
 
 def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
@@ -333,7 +374,6 @@ def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_gpof_gini.png", dpi=150, bbox_inches="tight")
     plt.show()
-    print("  Saved evaluation1-6-7_gpof_spread_gini.png")
 
 
 def plot_eval7_gpof_per_run_heatmap(summaries: dict[str, dict]) -> None:
@@ -371,8 +411,61 @@ def plot_eval7_gpof_per_run_heatmap(summaries: dict[str, dict]) -> None:
         fig.tight_layout()
         fig.savefig(f"evaluation1-6-7-{alg}_gpof_heatmap.png", dpi=150, bbox_inches="tight")
         plt.show()
-        print(f"  Saved evaluation1-6-7-{alg}_gpof_heatmap.png")
 
+
+def plot_eval7_group_cost_bar(
+        summaries: dict[str, dict],
+        statistic: str = "mean",
+) -> None:
+    algs = list(summaries.keys())
+    group_names = list(summaries[algs[0]]["_all_group_costs_fair"][0].keys())
+    n_groups = len(group_names)
+
+    n_algs = len(algs)
+    n_cols = 2
+    n_rows = (n_algs + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 4.5 * n_rows))
+    axes = np.array(axes).flatten()
+
+    width = 0.38
+    x = np.arange(n_groups)
+
+    for i, alg in enumerate(algs):
+        ax = axes[i]
+        all_fc = summaries[alg]["_all_group_costs_fair"]
+        all_uc = summaries[alg]["_all_group_costs_unfair"]
+
+        agg = np.mean
+        fair_vals = [agg([d[g] for d in all_fc]) for g in group_names]
+        unfair_vals = [agg([d[g] for d in all_uc]) for g in group_names]
+
+        fair_err = [np.std([d[g] for d in all_fc], ddof=1) for g in group_names]
+        unfair_err = [np.std([d[g] for d in all_uc], ddof=1) for g in group_names]
+
+        color = ALG_PALETTE.get(alg, "gray")
+        ax.bar(x - width / 2, unfair_vals, width, yerr=unfair_err, capsize=2,
+               color="lightgray", edgecolor="black", linewidth=0.4,
+               label="Unfair", zorder=3)
+        ax.bar(x + width / 2, fair_vals, width, yerr=fair_err, capsize=2,
+               color=color, edgecolor="black", linewidth=0.4,
+               label="Fair", zorder=3)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(group_names, fontsize=9, rotation=20, ha="right")
+        ax.set_ylabel(f"Group total cost ({statistic})", fontsize=10)
+        ax.set_title(alg, fontsize=11)
+        ax.legend(fontsize=9, loc="upper left")
+        ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
+
+    fig.suptitle(
+        f"Eval 7 — Per-Group Total Cost (Fair vs Unfair, {statistic} across runs)",
+        fontsize=13,
+    )
+    fig.tight_layout()
+    fname = f"eval7_group_cost_{statistic}.png"
+    fig.savefig(fname, dpi=150, bbox_inches="tight")
+    plt.show()
+    print(f"  Saved {fname}")
 
 def print_eval7_table(summaries: dict[str, dict]) -> None:
     algs = list(summaries.keys())
@@ -510,6 +603,7 @@ if __name__ == "__main__":
     print("  EVALUATION 1 — Overall PoF Comparison")
     print(f"{'=' * 60}")
     plot_eval1_pof_bar(summaries)
+    plot_eval1_total_cost_bar(summaries)
     print_eval1_table(summaries)
 
     print(f"\n{'=' * 60}")
@@ -526,4 +620,5 @@ if __name__ == "__main__":
     plot_eval7_gpof_bar(summaries)
     plot_eval7_gpof_spread_gini(summaries)
     plot_eval7_gpof_per_run_heatmap(summaries)
+    plot_eval7_group_cost_bar(summaries)
     print_eval7_table(summaries)
