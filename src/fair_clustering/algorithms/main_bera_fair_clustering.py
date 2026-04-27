@@ -1,3 +1,37 @@
+"""
+1. Run vanilla weighted k-median to obtain centers S and the unfair
+   baseline cost.
+2. Solve the FAIR p-ASSIGNMENT LP (eq. (1) of the paper) over the
+   variables x_{ij} for points i and the fixed centers j in S.
+3. Iteratively round the fractional LP solution to an integer assignment
+   while preserving (mass-bounded) fairness. The rounding here is a
+   simplified iterative LP scheme rather than the matroid-intersection; it
+   reproduces the same template (algorithm 2 of the paper):
+       - commit any integral variables;
+       - drop fairness constraints once the number of fractional
+         variables in their (color, center) cell falls below
+         2 (Delta + 1) (the sparsity threshold);
+       - re-solve the smaller LP and repeat until all points are
+         assigned.
+
+
+- The LP is solved over the kmedian centers only
+- DELTA = 1 is hardcoded — the implementation assumes disjoint
+  protected groups (Delta = 1 in Bera's notation). The protected attribute is encoded
+  as a single integer column, which enforces this.
+- the per-iteration fairness range is widened by +-1 (low =
+  max(0, floor(mass) - 1), high = ceil(mass) + 1) compared to the
+  paper's tight [floor(mass), ceil(mass)]. This adds slack for
+  numerical  at the cost of a slightly larger additive
+  fairness violation.
+- if the LP becomes infeasible mid-iteration, or if no variable rounds
+  to integral in a given iteration, we fall back to (a) greedy nearest-
+  center assignment for the remainder, or (b) committing the largest
+  fractional variable. These are numerical safety nets, not part of
+  the paper's analysis.
+"""
+
+
 from __future__ import annotations
 
 import warnings
@@ -17,6 +51,7 @@ from fair_clustering import csv_loader
 
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
+    """Convert a categorical protected-attribute column to integer codes."""
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
 
@@ -27,6 +62,21 @@ def proportional_bounds(
     n_groups: int,
     alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute relaxed lower and upper bound for each color
+
+    Proportional relaxation here: each cluster's fraction of color h must lie in
+    [max(0, f_h - alpha), min(1, f_h + alpha)] where f_h is the
+    weighted global proportion of color h.
+
+    :param group_codes:  Integer codes of length n giving the color of each
+            point.
+    :param weights: not used, legacy, is just array of [1,1,1,1,1...]
+    :param n_groups: Number of distinct colors
+    :param alpha: additive slack in [0, 1]
+    :return: pair lower_bound, upper_bound, each an array of length
+        n_groups giving the lower and upper allowed proportion per color
+    """
     total = weights.sum()
     f = np.array([
         weights[group_codes == h].sum() / total
@@ -45,17 +95,38 @@ def solve_fair_lp(
     lower_bounds: np.ndarray,
     upper_bounds: np.ndarray,
 ) -> Optional[np.ndarray]:
+    """
+    Solve the fair p-assignment LP for fixed centers.
+
+    Equivalent in structure to the LP restricted to
+    the given center set: minimise weighted L1 cost subject to
+    one-to-cluster assignment and per-color proportional bounds at every
+    cluster.
+
+    :param X: (n, d) data points.
+    :param centers: (k, d) fixed centers from the unfair k-median solve.
+    :param weights: not used
+    :param group_codes: integer color codes
+    :param lower_bounds: per-color minimum fraction
+    :param upper_bounds: per-color maximum fraction
+    :return: (n, k) array x_lp of fractional assignments
+
+    """
     dataset_len = len(X)
     nr_of_centers = len(centers)
     nr_of_groups = len(lower_bounds)
     n_vars = dataset_len * nr_of_centers
 
+    # per-variable LP cost = w_i * d(i, j)
     distances_to_centers = pairwise_l1(X, centers).astype(np.float64)
     cost_to_center = (distances_to_centers * weights[:, np.newaxis]).ravel()
 
+    # equality constraint: each point fully assigned (sum_j x_ij = 1)
     a_equality = kron(eye(dataset_len), np.ones((1, nr_of_centers)), format='csr')
     b_equality = np.ones(dataset_len, dtype=np.float64)
 
+    # inequality block: two rows per (center, color) for the [l_h, u_h]
+    # proportional fairness bound.
     n_ineq = 2 * nr_of_groups * nr_of_centers
     a_upper_bound = lil_matrix((n_ineq, n_vars), dtype=np.float64)
     b_bound = np.zeros(n_ineq)
@@ -66,7 +137,10 @@ def solve_fair_lp(
             in_bound = (group_codes == group_index)
             cols = np.arange(dataset_len) * nr_of_centers + center_index
 
+            # row 1: l_h * sum_i x_ij  -  sum_{i in C_h} x_ij  <=  0
             a_upper_bound[row, cols] = lower_bounds[group_index] - in_bound
+
+            # row 2: sum_{i in C_h} x_ij  -  u_h * sum_i x_ij  <=  0
             a_upper_bound[row + 1, cols] = in_bound - upper_bounds[group_index]
             row += 2
 
@@ -97,24 +171,57 @@ def iterative_rounding(
     x_lp: np.ndarray,
     D: np.ndarray,
 ) -> np.ndarray:
+    """
+    Round the fractional LP solution to an integer fair assignment.
+
+    For each LP rounding iteration:
+        1.  Builds an LP over only the still-fractional (point, center)
+            variables, with the assignment equality intact and per (color, center)
+            mass bounds set to [max(0, floor(mass) - 1), ceil(mass) + 1]
+        2.  Commits any variable that solves to 1 (assigned) and prunes any
+            that solves to 0 (forbidden in future iterations).
+        3.  Drops the per (color, center) fairness constraint once the
+            number of fractional variables in that cell falls below the
+            sparsity threshold 2 * (Delta + 1) = 4. This is what
+            guarantees a constant additive violation in the paper's
+            analysis.
+
+    Two numerical safety nets are layered on top of the paper's scheme:
+      - If no variable becomes integral in an iteration, the largest
+        fractional variable is force-committed (avoids stalling on
+        floating-point near-vertices).
+      - If the LP is reported infeasible, or a point is still
+        unassigned after the loop terminates, those points are assigned
+        greedily to their nearest center.
+
+    :param weights: not used, array of [1,1,1,1,1,1]
+    :param group_code: integer color codes of length n.
+    :param x_lp: (n, k) fractional LP assignment from solve_fair_lp.
+    :param D: (n, k) L1 distance matrix.
+    :return:
+    """
     dataset_len, nr_of_centers = x_lp.shape
     max_group_code = int(group_codes.max()) + 1
-    DELTA = 1
+    DELTA = 1  # disjoint-groups assumption
     SPARSITY_THRESHOLD = 2 * (DELTA + 1)
 
     labels = np.full(dataset_len, -1, dtype=np.int32)
     unassigned = np.ones(dataset_len, dtype=bool)
 
+    # total weighted mass and per-color mass per center, from x_lp.
     weighted_mass = np.einsum('ij,i->j', x_lp, weights).astype(np.float64)
     group_weighted_mass = np.array([
         np.einsum('ij,i->j', x_lp[group_codes == group_code], weights[group_codes == group_code])
         for group_code in range(max_group_code)
     ])
 
+    # fair_active[h, j] tracks whether the (color h, center j) fairness
+    # constraint is still enforced in the current iteration's LP.
     fair_active = np.ones((max_group_code, nr_of_centers), dtype=bool)
-    # cache for each point, which centers still have a nonzero LP variable?
+    # cache for each point, for each point, the set of centers with nonzero LP mass, pruned
+    # as variables are committed/discarded across iterations.
     allowed = [set(np.where(x_lp[i] > 1e-9)[0]) for i in range(dataset_len)]
-
+    # loose upper bound on the number of iterations needed
     iteration_amount = (dataset_len + nr_of_centers) * max_group_code + 10
     for iter in range(iteration_amount):
         still_unassigned = np.where(unassigned)[0]
@@ -135,12 +242,14 @@ def iterative_rounding(
                 labels[i] = int(np.argmin(D[i]))
             break
 
+        # lookup from (local point index, center) to flat LP-variable index
         quick_lookup_idx = {(unassigned_point_enum, j): enum for enum, (unassigned_point_enum, j) in enumerate(var_list)}
         cost_vector_lp = np.array([
             weights[still_unassigned[unassigned_point_enum]] * D[still_unassigned[unassigned_point_enum], j]
             for unassigned_point_enum, j in var_list
         ], dtype=np.float64)
 
+        # equality: each remaining point must still be fully assigned
         a_equality = lil_matrix((nr_unassigned, nr_vars_lp), dtype=np.float64)
         for enum, (unassigned_point_enum, j) in enumerate(var_list):
             a_equality[unassigned_point_enum, enum] = 1.0
@@ -149,6 +258,7 @@ def iterative_rounding(
         ineq_rows, ineq_rhs = [], []
 
         def _add_range(coeffs: dict[int, float], low: float, high: float) -> None:
+            """Append two rows expressing low <= sum coeffs * x <= high."""
             row_p, row_n = np.zeros(nr_vars_lp), np.zeros(nr_vars_lp)
             high = max(high, low)
             for value, coefficient in coeffs.items():
@@ -156,7 +266,9 @@ def iterative_rounding(
             ineq_rows.extend([row_p, row_n])
             ineq_rhs.extend([high, -low])
 
-        # per-group, per-center weighted mass range
+        # per-group, per-center weighted mass range:
+        # [max(0, floor(mass) - 1), ceil(mass) + 1]
+        # paper uses [floor(mass), ceil(mass)], the widening increases violation by 1
         for group_code_idx in range(max_group_code):
             for col in range(nr_of_centers):
                 if not fair_active[group_code_idx, col]:
@@ -277,6 +389,37 @@ def fair_clustering(
 ) -> tuple[
          ndarray, ndarray, float, ndarray, float, dict[Any, Any], Any, ndarray[Any, dtype[floating[_64Bit]]] | ndarray[
              Any, dtype[Any]] | Any, ndarray, list, ndarray, ndarray] | None:
+    """
+    Steps:
+        1. Encode features, and protected-group labels.
+        2. Compute the per-color [l_h, u_h] proportional
+           bounds.
+        3. Run vanilla weighted k-median; this provides the unfair
+           baseline cost and the fixed center set used by the LP.
+        4. Solve the fair p-assignment LP on those centers.
+        5. Iteratively round to an integer fair assignment.
+        6. Compute the resulting fair cost.
+
+
+    :param df: data
+    :param feature_cols: names of numeric x and y columns for points
+    :param protected_group_col: name of the column holding the protected
+            attribute, treated as disjoint categorical groups.
+    :param k_cluster: number of clusters k
+    :param alpha: additive slack used to derive the lower and upper bounds
+    :param weight_col:
+    :params lower_bound, upper_bound: Optional pre-computed per-color
+            bounds; if either is None, both are recomputed from
+            alpha with proportional_bounds
+    :param kmedian_trials, kmedian_max_iter, random_seed:  Forwarded to the
+            kmedian solver.
+    :return: (unfair_centers, unfair_labels, unfair_cost, fair_labels,
+        fair_cost, timing, x, weights, group_codes, group_names,
+        lower_bounds, upper_bounds)
+
+    """
+
+
     timing = {}
     t_start = time.perf_counter()
 

@@ -13,7 +13,7 @@ The paper's Lemma 7 first solves the LP over the full location set L
 and then consolidates fractional mass onto the nearest opened center,
 yielding a fractional fair solution supported on the integral centers.
 This implementation skips the consolidation step by solving the LP
-*directly* over the kmedian centers. The resulting LP cost is at least
+directly over the kmedian centers. The resulting LP cost is at least
 as large as the consolidated cost, so the essentially-fair guarantee is
 preserved, but the cost bound 2 * c_LP + c_bar from the paper does not
 transfer verbatim.
