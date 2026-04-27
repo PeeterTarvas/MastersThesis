@@ -634,8 +634,7 @@ def fair_clustering(
 
 
 def audit_cluster_balance(labels: np.ndarray, colours: np.ndarray,
-                          k: int, r: int, b: int,
-                          group_names: list) -> int:
+                          k: int, r: int, b: int) -> int:
     required_balance = b / r
     violations = 0
     for j in range(k):
