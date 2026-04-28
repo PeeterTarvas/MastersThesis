@@ -725,10 +725,6 @@ def fair_clustering(
     fairlets = fairlet_decomposition(hst_root, binary_colours, r_final, b_final)
     timing['Fairlet Decomposition'] = time.perf_counter() - t0
 
-    n_fairlets = len(fairlets)
-    covered = sum(len(f) for f in fairlets)
-    avg_size = covered / n_fairlets if n_fairlets else 0
-    singleton_count = sum(1 for f in fairlets if len(f) == 1)
     validate_fairlets(fairlets, binary_colours, r_final, b_final, dataset_length)
 
     t0 = time.perf_counter()
@@ -741,8 +737,6 @@ def fair_clustering(
     timing['Cluster Fairlets'] = time.perf_counter() - t0
 
     timing['Total Time'] = time.perf_counter() - t_start
-
-    pof = fair_cost / unfair_cost if unfair_cost > 0 else float('inf')
 
     return (unfair_centers, unfair_labels, unfair_cost, fair_centers,
             fair_labels, fair_cost, timing,
