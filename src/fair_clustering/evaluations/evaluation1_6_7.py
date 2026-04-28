@@ -569,11 +569,11 @@ if __name__ == "__main__":
     print(f"  Running Böhm")
     print(f"{'#' * 60}")
     boehm_summary = run_trials(
-        max_rows=N_SIZE,
+        max_rows=N_SIZE_BOEHM,
         algorithm_fn=boehm_fc,
         result_builder=build_boehm_result,
         group_id_features=GROUP_ID_FEATURES,
-        n_runs=N_RUNS,
+        n_runs=N_RUNS_BOEHM,
         csv_path="../../../us_census_puma_data.csv",
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,

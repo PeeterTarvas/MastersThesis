@@ -11,10 +11,10 @@
   "All results PoF (min)": 2.3302118576043758,
   "All results PoF (max)": 2.492496719796812,
   "Avg Timing": {
-    "Balance Dataset": 0.051296866654107966,
-    "B\u00f6hm Fair Clustering": 2.972781700004513,
-    "Total Time": 3.051983266680812,
-    "Vanilla k-Median": 0.025323566631413996
+    "Balance Dataset": 0.058127900042260684,
+    "B\u00f6hm Fair Clustering": 1.9993713332805783,
+    "Total Time": 2.074589266674593,
+    "Vanilla k-Median": 0.015415033364358047
   },
   "G-PoF means": {
     "Asian": 2.0866155570710965,
@@ -62,22 +62,22 @@
   ],
   "_timings": [
     {
-      "Balance Dataset": 0.09098690003156662,
-      "Vanilla k-Median": 0.024271899950690567,
-      "B\u00f6hm Fair Clustering": 3.1129701000172645,
-      "Total Time": 3.23059190006461
+      "Balance Dataset": 0.1227741000475362,
+      "Vanilla k-Median": 0.015004600048996508,
+      "B\u00f6hm Fair Clustering": 2.140368599910289,
+      "Total Time": 2.279811799991876
     },
     {
-      "Balance Dataset": 0.029060499975457788,
-      "Vanilla k-Median": 0.030724799958989024,
-      "B\u00f6hm Fair Clustering": 2.801274999976158,
-      "Total Time": 2.863558499957435
+      "Balance Dataset": 0.024834200041368604,
+      "Vanilla k-Median": 0.013989500002935529,
+      "B\u00f6hm Fair Clustering": 1.8942250999389216,
+      "Total Time": 1.9346266000065953
     },
     {
-      "Balance Dataset": 0.0338431999552995,
-      "Vanilla k-Median": 0.020973999984562397,
-      "B\u00f6hm Fair Clustering": 3.0041000000201166,
-      "Total Time": 3.0617994000203907
+      "Balance Dataset": 0.02677540003787726,
+      "Vanilla k-Median": 0.017251000041142106,
+      "B\u00f6hm Fair Clustering": 1.963520299992524,
+      "Total Time": 2.009329400025308
     }
   ],
   "_all_cpofs": [],

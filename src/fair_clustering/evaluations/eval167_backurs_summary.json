@@ -11,13 +11,13 @@
   "All results PoF (min)": 2.793079427554642,
   "All results PoF (max)": 3.406857526773029,
   "Avg Timing": {
-    "Base Selection": 0.27453856670763344,
-    "Cluster Fairlets": 0.031361199993019305,
-    "Data Preparation": 0.0012086333396534126,
-    "Fairlet Decomposition": 0.01410390002032121,
-    "HST Construction": 0.026359999979225297,
-    "Total Time": 0.3759028666730349,
-    "Vanilla K-Median": 0.027628699977261324
+    "Base Selection": 0.17078500000449517,
+    "Cluster Fairlets": 0.020615100006883342,
+    "Data Preparation": 0.0006475999640921751,
+    "Fairlet Decomposition": 0.009124633312846223,
+    "HST Construction": 0.0162514999974519,
+    "Total Time": 0.23890246668209633,
+    "Vanilla K-Median": 0.020940066664479673
   },
   "G-PoF means": {
     "Asian": 5.604271349877074,
@@ -65,31 +65,31 @@
   ],
   "_timings": [
     {
-      "Data Preparation": 0.0011168000055477023,
-      "Vanilla K-Median": 0.02544980007223785,
-      "Base Selection": 0.25598900008480996,
-      "HST Construction": 0.022504799999296665,
-      "Fairlet Decomposition": 0.012533700093626976,
-      "Cluster Fairlets": 0.021645799977704883,
-      "Total Time": 0.33995960000902414
+      "Data Preparation": 0.0005591999506577849,
+      "Vanilla K-Median": 0.028048000065609813,
+      "Base Selection": 0.17555059993173927,
+      "HST Construction": 0.012441899976693094,
+      "Fairlet Decomposition": 0.007687199977226555,
+      "Cluster Fairlets": 0.0159906999906525,
+      "Total Time": 0.2409357000142336
     },
     {
-      "Data Preparation": 0.0015767000149935484,
-      "Vanilla K-Median": 0.033410799922421575,
-      "Base Selection": 0.26844170002732426,
-      "HST Construction": 0.03657919995021075,
-      "Fairlet Decomposition": 0.018866400001570582,
-      "Cluster Fairlets": 0.04623790003824979,
-      "Total Time": 0.4058686000062153
+      "Data Preparation": 0.0008308999240398407,
+      "Vanilla K-Median": 0.020838299999013543,
+      "Base Selection": 0.1664412000682205,
+      "HST Construction": 0.014366299961693585,
+      "Fairlet Decomposition": 0.008565799915231764,
+      "Cluster Fairlets": 0.022881100070662796,
+      "Total Time": 0.23433250002563
     },
     {
-      "Data Preparation": 0.0009323999984189868,
-      "Vanilla K-Median": 0.02402549993712455,
-      "Base Selection": 0.2991850000107661,
-      "HST Construction": 0.019995999988168478,
-      "Fairlet Decomposition": 0.010911599965766072,
-      "Cluster Fairlets": 0.026199899963103235,
-      "Total Time": 0.38188040000386536
+      "Data Preparation": 0.0005527000175788999,
+      "Vanilla K-Median": 0.013933899928815663,
+      "Base Selection": 0.17036320001352578,
+      "HST Construction": 0.021946300053969026,
+      "Fairlet Decomposition": 0.011120900046080351,
+      "Cluster Fairlets": 0.02297349995933473,
+      "Total Time": 0.24143920000642538
     }
   ],
   "_all_cpofs": [],
