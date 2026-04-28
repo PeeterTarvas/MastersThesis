@@ -514,13 +514,16 @@ def print_eval7_table(summaries: dict[str, dict]) -> None:
 
 
 if __name__ == "__main__":
-    N_SIZE = 1000
+    N_SIZE = 25_000
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     GROUP_ID_FEATURES = ["RACE_6"]
     PROTECTED_COL = "GROUP_ID"
     K = 10
     ALPHA = 0.05
-    N_RUNS = 3
+    N_RUNS = 30
+
+    N_SIZE_BOEHM = 25_000
+    N_RUNS_BOEHM = 10
 
     summaries: dict[str, dict] = {}
 
@@ -618,7 +621,7 @@ if __name__ == "__main__":
     print("  EVALUATION 7 — Per-Group G-PoF")
     print(f"{'=' * 60}")
     plot_eval7_gpof_bar(summaries)
+    plot_eval7_group_cost_bar(summaries)
     plot_eval7_gpof_spread_gini(summaries)
     plot_eval7_gpof_per_run_heatmap(summaries)
-    plot_eval7_group_cost_bar(summaries)
     print_eval7_table(summaries)

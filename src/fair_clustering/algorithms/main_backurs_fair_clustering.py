@@ -1,3 +1,34 @@
+"""
+Two step algorithm:
+    step 1   Build a gamma-HST embedding of the points. Recursively walk it
+             top-down: at every internal node, decide how many points of
+             each colour to pull up - the Minimum-Heavy-Points sub-problem.
+             The pulled-up points are packed into (r, b)-balanced fairlets at
+             the current node, and the recursion continues into each child with
+             the remaining points.
+    step 2   Replace every fairlet by a single representative (its medoid),
+             weighted by the fairlet size. Run vanilla k-median on the
+             representatives. Each fairlet inherits the cluster of its
+             representative, and every point in the fairlet inherits the
+             same cluster — guaranteeing that every cluster is the union
+             of (r, b)-balanced fairlets and is therefore (r, b)-fair.
+
+The implementation generalises to multi-group inputs, wit one-vs-other method:
+Best baseline color is chosen by esitmating the fairlet-decomposition cost for each candidate,
+then rest of the colors are merged into single non-baseline class. Fairness is therefore enforced only between
+baseline and rest, not between every pair of original colours - simple method for handling multiple groups.
+
+r,b parameters are autmatically calulated.
+
+If a leftover bag of points cannot be packed into an (r, b)-balanced
+fairlet at the end of a node - pack_into_fairlets falls back to
+emitting singletons. The paper assumes a global balanced input where
+this never happens but with real data it occasionally does.
+
+The fairlet representative is the L1 medoid of the fairlet rather than an arbitrary point.
+"""
+
+
 from __future__ import annotations
 
 import time
@@ -16,16 +47,15 @@ from fair_clustering.kmedian import kmedian, pairwise_l1
 
 def compute_rb(p_base: float, alpha: float, max_r: int = 10) -> tuple[int, int]:
     """
-    Compute (r, b) balance parameters for binary fairlet decomposition.
+    Compute (r, b) balance parameters for binary fairlet decomposition
 
-    Given a base colour with global proportion *p_base* and fairness slack alpha,
+    given a base colour with global proportion p_base and fairness slack alpha,
     the minority colour's minimum acceptable fraction in each fairlet is:
 
         p_target = max(0.01,  min(p_base, 1 - p_base)  - alpha)
 
-    We then find the tightest (r, b=1) pair with  1/(r+1) >= p_target,
-    capped at max_r to keep fairlets small (and the O(r^8) approx factor
-    manageable).
+    Find the smallest gap (r, b=1) pair with  1/(r+1) >= p_target,
+    capped at max_r to keep fairlets small.
 
     Returns (r, b) with  r >= b = 1  and  b/(r+b) >= p_target.
     """
@@ -36,9 +66,9 @@ def compute_rb(p_base: float, alpha: float, max_r: int = 10) -> tuple[int, int]:
         return 1, 1
 
     # Find largest r such that  1/(r+1) >= p_target
-    r = int(1.0 / p_target) - 1           # first guess
+    r = int(1.0 / p_target) - 1  # first guess
     r = max(1, r)
-    # Tighten upwards if the guess undershoots
+    # tighten upwards if the guess undershoots
     while r >= 1 and 1.0 / (r + 1) < p_target - 1e-9:
         r -= 1
     r = max(1, min(r, max_r))
@@ -49,7 +79,7 @@ def proportional_bounds(
     n_groups: int,
     alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    "compute proportional fairness bounds [f_h - alpha, f_h + alpha] per group."
+    "compute proportional fairness bounds [f_h - alpha, f_h + alpha] per group"
     n = len(group_codes)
     f = np.array([(group_codes == h).sum() / n for h in range(n_groups)])
     lower_bound = np.maximum(0.0, f - alpha)
@@ -58,6 +88,7 @@ def proportional_bounds(
 
 
 def is_balanced(len_left: int, len_right: int, left: int, right: int) -> bool:
+    """return True if a (len_left, len_right) bag is (left, right)-balanced"""
     if len_left == 0 and len_right == 0:
         return True
     if len_left == 0 or len_right == 0:
@@ -67,7 +98,7 @@ def is_balanced(len_left: int, len_right: int, left: int, right: int) -> bool:
 
 def validate_fairlets(fairlets: list[list[int]], colours: np.ndarray,
                       r: int, b: int, n_total: int) -> None:
-    "check that fairlets cover every point exactly once and are balanced."
+    "just using this as a sanity check"
     seen = set()
     duplicates = 0
     balance_violations = 0
@@ -96,11 +127,20 @@ def validate_fairlets(fairlets: list[list[int]], colours: np.ndarray,
               f"({r},{b})-balance.")
 
 def encode_groups_to_int(group_series: pd.Series) -> tuple[np.ndarray, list]:
+    """Encode a categorical protected-attribute column as integer codes"""
     cats = pd.Categorical(group_series)
     return cats.codes.astype(np.int32), list(cats.categories)
 
 
 class HSTNode:
+    """
+    Node for gamma-HST embedding
+
+    Node have children(list of HSTNode) and an empty leaf indices.
+    Leaf notes have empty children list and store the indices of the input points that end up in their grid cell.
+    The tree per-level edge length equals the cell side at that level so it is reconstructed from the level when needed.
+    """
+
     __slots__ = ['level', 'children', 'leaf_indices', 'edge_weight']
 
     def __init__(self, level: int, edge_weight: float = 0.0):
@@ -115,11 +155,21 @@ def build_hst(
 ) -> HSTNode:
     """
     construct gamma-HST embedding of X using randomly shifted grids, points are then stored in leaf nodes
+
+    Implements the randomly shifted quadtree construction. At each level teh bounding cube is split inot
+    gamma**d equal volume subcells. Each non-empty sub-cell becomes a child node. Recursion stops at single-point leaves
+    or when max_depth is reached.
+
+    gamma: branching factor of the HST. Must be >= 2.
+    :returns root HSTNode. Calling collect_leaf_points returns every input point
     """
     rng = np.random.default_rng(random_seed)
     n_points, n_dims = x.shape
 
-    # bounding cube
+    # bounding cube: side length = 4 * largest axis span
+    # factor of 4 gives the random shift enough room to keep all points inside the
+    # shifted cube, regardless of which corner the shift lands in.
+
     span = (x.max(axis=0) - x.min(axis=0)).max()
     cube_side  = 4 * span
 
@@ -130,6 +180,8 @@ def build_hst(
     origin = x_shifted.min(axis=0) - span
     x_norm = x_shifted - origin
 
+    # log_gamma(n) levels are good enough for the expected deviation, +3 is
+    # a safety margin for clusters that need more separation.
     max_depth = int(np.ceil(np.log(max(n_points, 4)) / np.log(gamma))) + 3
 
     def _build(point_idx: list[int], depth: int, cell_side: float) -> HSTNode:
@@ -142,10 +194,13 @@ def build_hst(
         child_side = cell_side / gamma
 
         if child_side < 1e-15:
+            # numerical floor: cell has shrunk below float precision, so
+            # bottom out as a leaf rather than recursing further.
             node.leaf_indices = list(point_idx)
             return node
 
         coords = x_norm[point_idx]
+        # Map each point to a sub-cell index (g_1, ..., g_d) with 0 <= g_i < gamma.
         grid_idx = np.floor(coords / child_side).astype(np.int64)
         grid_idx = np.clip(grid_idx, 0, gamma - 1)
 
@@ -156,6 +211,8 @@ def build_hst(
             buckets.setdefault(cell_key, []).append(global_point_idx)
 
         if len(buckets) <= 1:
+            # if all points fall in the same sub-cell - descending one more
+            # level lets the recursion split them at a smaller scale
             if  depth < max_depth:
                 child = _build(point_idx, depth + 1, child_side)
                 node.children = [child]
@@ -182,6 +239,8 @@ def collect_leaf_points(node: HSTNode) -> list[int]:
 def compute_excess(n_red: int, n_blue: int,
                    r: int, b: int) -> tuple[int, int]:
     """
+    step 1 of MinHeavyPoints (paper UnbalancedPoints procedure)
+
     return (remove_red, remove_blue)m the minimum number of points
     to discard from one colour so that the remainder is (r,b)-balanced.
 
@@ -200,6 +259,8 @@ def compute_excess(n_red: int, n_blue: int,
 def leftover_fairlet_size(n_red: int, n_blue: int,
                           r: int, b: int) -> tuple[int, int]:
     """
+    step 3 helper: size of the residual non-saturated fairlet.
+
     after packing as many full (r+b)-sized fairlets as possible from a
     balanced set, return (leftover_red, leftover_blue).
     """
@@ -219,7 +280,7 @@ def leftover_fairlet_size(n_red: int, n_blue: int,
 def borrowable_dominant(is_red_dominant: bool, n_red: int, n_blue: int,
                         r: int, b: int) -> int:
     """
-    how many points of the dominant colour can we borrow from a child
+    step 2 helper: how many points of the dominant colour can we borrow from a child
     while keeping that child (r,b)-balanced?
     """
     if is_red_dominant:
@@ -239,22 +300,38 @@ def compute_heavy_point_counts(
         r: int, b: int,
 ) -> list[tuple[int, int]]:
     """
+    Solve the Minimum Heavy Points sub-problem at one HST node
+
     For every child of an internal HST node, decide how many red and blue
     points to pull up as heavy points so that:
       1 each child's remaining points are (r,b)-balanced, and
       2 the collected heavy points are themselves (r,b)-balanced
           (so we can form fairlets from them).
-    stages:
-    1  Remove the minimum necessary from each child to make it balanced.
-    2 If the total heavy set is imbalanced, borrow extra points of the
-          dominant colour from children that have a surplus.
+    steps:
+    1  For every child, run compute_excess to find the
+        minimum colour-imbalanced removals needed so that the
+        remainder is itself (r, b)-balanced.
+    2 If the union of removals (the heavy set) is itself
+     imbalanced, borrow surplus dominant-colour points from
+     children that still have spare capacity (per
+     borrowable_dominant) until either the heavy set is
+     balanced or every child becomes minimally-balanced.
     3 If still imbalanced, pull up entire leftover fairlets from
           children (each leftover is smaller than r+b).
+
+    :child_colour_counts: per-child (n_red, n_blue) counts.
+    :r, b: the target balance parameters
+
+    Returns:
+    Per-child remove_red, remove_blue - the number of points of
+    each colour the caller must take from that child to assemble the
+    heavy set at this node.
     """
     n_children = len(child_colour_counts)
     if n_children == 0:
         return []
 
+    # step 1: minimum imbalance removals per child
     removals = [compute_excess(nr, nb, r, b)
                 for nr, nb in child_colour_counts]
 
@@ -266,6 +343,7 @@ def compute_heavy_point_counts(
 
     red_is_dominant = total_remove_red >= total_remove_blue
 
+    # step 2: borrow extra surplus from children to match the heavy set
     for i, (child_red, child_blue) in enumerate(child_colour_counts):
         remove_red, remove_blue = removals[i]
         remaining_red = child_red - remove_red
@@ -293,6 +371,7 @@ def compute_heavy_point_counts(
         if is_balanced(total_remove_red, total_remove_blue, r, b):
             return removals
 
+    # step 3: pull up entire non-saturated fairlets
     for i, (child_red, child_blue) in enumerate(child_colour_counts):
         remove_red, remove_blue = removals[i]
         remaining_red = child_red - remove_red
@@ -335,13 +414,15 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
     fairlets: list[list[int]] = []
     mi, ni = 0, 0  #  into majority / minority
 
+    # greedily emit full (r, b)-fairlets while there is enough of both colours left.
     while mi + red_balance<= len(majority) and ni + blue_balance <= len(minority):
         fairlet = majority[mi:mi + red_balance] + minority[ni:ni + blue_balance]
         fairlets.append(fairlet)
         mi += red_balance
         ni += blue_balance
 
-    #leftover points
+    # leftover points: either form one final balanced fairlet,
+    # or drop to singletons if that's not possible.
     leftover_maj = majority[mi:]
     leftover_min = minority[ni:]
 
@@ -352,7 +433,7 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
         if is_balanced(left_r, left_b, red_balance, blue_balance) and left_r + left_b > 0:
             fairlets.append(leftover_maj + leftover_min)
         else:
-            # split into  singletons if cant form balanced group
+            # split into  singletons if cant form balanced group, split into one point pieces
             for idx in leftover_maj:
                 fairlets.append([idx])
             for idx in leftover_min:
@@ -363,9 +444,10 @@ def pack_into_fairlets(red_ids: list[int], blue_ids: list[int],
 def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
                           r: int, b: int) -> list[list[int]]:
     """
-      1. decide how many points of each colour to pull from each child (MinHeavyPoints).
-      2. remove those points from the available pool and form fairlets from them.
-      3. recurse into each child with the remaining (now balanced) points.
+    step 1: top-down (r, b)-fairlet decomposition
+      1. decide how many points of each colour to pull from each child (MinHeavyPoints)
+      2. remove those points from the available pool and form fairlets from them
+      3. recurse into each child with the remaining (now balanced) points
 
     track which points are still not placed in a fairlet
     using a global set — this prevents any point from appearing twice
@@ -374,7 +456,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
     all_fairlets: list[list[int]] = []
 
     def _count_available(node: HSTNode) -> tuple[int, int]:
-        "count available red / blue points in the subtree of node"
+        """count available red / blue points in the subtree of node"""
         if not node.children:
             n_red = sum(1 for i in node.leaf_indices
                         if i in available_points and colours[i] == 0)
@@ -390,7 +472,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
 
     def _take_points(node: HSTNode, colour: int,
                      how_many: int) -> list[int]:
-        "collect up to how_many available points of colour from subtree."
+        """collect up to how_many available points of colour from subtree."""
         if how_many <= 0:
             return []
         taken: list[int] = []
@@ -414,6 +496,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
             return
 
         if not node.children:
+            # leaf: directly pack the points stored here.
             reds = [i for i in node.leaf_indices
                     if i in available_points and colours[i] == 0]
             blues = [i for i in node.leaf_indices
@@ -424,6 +507,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
                 all_fairlets.append(fairlet)
             return
 
+        # internal node: decide how many to pull up, then pack and repeat.
         child_colour_counts = [_count_available(ch) for ch in node.children]
         removals = compute_heavy_point_counts(child_colour_counts, r, b)
 
@@ -450,6 +534,9 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
 
     _decompose(root)
 
+    # safety: any points that never made it into a fairlet (shouldn't
+    # happen for clean inputs, but with real data it can happen)
+    # are packed at the top level.
     left_overs = sorted(available_points)
     if left_overs:
         reds = [i for i in left_overs if colours[i] == 0]
@@ -460,6 +547,7 @@ def fairlet_decomposition(root: HSTNode, colours: np.ndarray,
     return all_fairlets
 
 def get_fairlet_medoid(fairlet, points):
+    """Return the index of the L1 medoid of a fairlet"""
     if len(fairlet) == 1:
         return fairlet[0]
     pts = points[fairlet]
@@ -474,9 +562,17 @@ def cluster_fairlets(points: np.ndarray, fairlets: list[list[int]],
                      random_seed: int = 42
                      ) -> tuple[np.ndarray, np.ndarray, float]:
     """
-    1. for each fairlet pick one representative point - we picked the first one
-    2. run k-median on the representatives, weighted by fairlet size
-    3. every point inherits the cluster of its fairlet's representative
+    step 2: weighted vanilla k-median over fairlet representatives
+    Steps:
+        1. Pick the L1 medoid of each fairlet as its representative.
+        2. Run weighted k-median over the representatives, with each
+           representative's weight equal to its fairlet's size.
+        3. Propagate the representative's cluster label to every member
+           of its fairlet.
+        4. Greedy fall-back for any leftover points that somehow escaped
+           a fairlet (should be empty for a valid decomposition).
+        5. Compute the total L1 cost across all points using the
+           returned centres.
     """
     n_points = len(points)
 
@@ -520,8 +616,29 @@ def fair_clustering(
         gamma: int = 2,
 ) -> tuple:
     """
-    :param gamma: in tree building into how many splits one pice is spited to, higher the more time it takes
-    :return:
+
+    Steps:
+        1. Encode groups; derive (l_h, u_h) for the post-hoc audit.
+        2. Run vanilla weighted k-median on the original (multi-group)
+           data to obtain the unfair baseline cost.
+        3. Pick a "best baseline" colour via cost estimation (only when
+           there are more than 2 colours): for each candidate colour, run
+           the binary fairlet-decomposition and estimate the resulting
+           cost (including a singleton penalty), then pick the cheapest.
+           For binary inputs this step is skipped.
+        4. Re-encode to a binary "baseline vs rest" colour vector.
+        5. Build the gamma-HST and decompose into (r, 1)-fairlets.
+        6. Validate the decomposition (validate_fairlets).
+        7. Run weighted vanilla k-median over fairlet representatives
+           and propagate cluster labels to every point.
+
+
+
+    :param gamma: in tree building into how many splits one piece is spited to, higher the more time it takes
+    :return: (unfair_centers, unfair_labels, unfair_cost,
+           fair_centers, fair_labels, fair_cost,
+           timing, x, group_codes, group_names,
+           lower_bounds, upper_bounds)
     """
     timing = {}
     t_start = time.perf_counter()
@@ -554,8 +671,8 @@ def fair_clustering(
         best_base = 0
     else:
         # L one-vs-rest decompositions: quick cost estimation
-        # NOTE: Singletons contribute 0 to intra-fairlet cost but provide
-        # no fairness enforcement.  We penalize uncovered (singleton) points
+        # Singletons contribute 0 to intra-fairlet cost but provide
+        # no fairness enforcement. Penalize uncovered singleton points
         # using the average per-point cost of multi-point fairlets as a
         # surrogate for the cost they would pay if forced into fairlets.
         base_costs: dict[int, float] = {}
