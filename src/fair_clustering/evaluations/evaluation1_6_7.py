@@ -1,6 +1,13 @@
-import numpy as np
+import os
+import argparse
+import matplotlib
+
+matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
+
+
 from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
 from fair_clustering.algorithms.main_boehm_fair_clustering import fair_clustering as boehm_fc
@@ -43,8 +50,6 @@ def plot_eval1_pof_bar(summaries: dict[str, dict]) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=11)
     ax.set_ylabel("Price of Fairness (PoF)", fontsize=11)
-    ax.set_title(f"Eval 1 — Overall PoF Comparison  (RACE_6, n={N_SIZE}, k={K}, α={ALPHA})",
-                 fontsize=12)
     ax.legend(loc="upper right")
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
@@ -54,7 +59,7 @@ def plot_eval1_pof_bar(summaries: dict[str, dict]) -> None:
 
     fig.tight_layout()
     fig.savefig("eval1_pof_bar_chart.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
     print("  Saved eval1_pof_bar_chart.png")
 
 
@@ -91,15 +96,11 @@ def plot_eval1_total_cost_bar(summaries: dict[str, dict]) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(algs, fontsize=11)
     ax.set_ylabel("Total clustering cost (mean across runs)", fontsize=10)
-    ax.set_title(
-        f"Eval 1 — Total Cost: Fair vs Unfair  (RACE_6, k={K}, α={ALPHA})",
-        fontsize=12,
-    )
     ax.legend(fontsize=10, loc="upper left")
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
     fig.savefig("eval1_total_cost_bar.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
     print("  Saved eval1_total_cost_bar.png")
 
 
@@ -143,7 +144,7 @@ def print_eval1_table(summaries: dict[str, dict]) -> None:
         )
 
     print(sep)
-    csv_path = "evaluation1-6-7_results.csv"
+    csv_path = "evaluation1_table_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"  Results saved to {csv_path}")
@@ -191,12 +192,11 @@ def plot_eval6_cpof_mean_bar(summaries: dict[str, dict]) -> None:
     ax.set_xticklabels([f"C{j}" for j in cluster_ids])
     ax.set_xlabel("Cluster", fontsize=11)
     ax.set_ylabel("C-PoF  (fair cost / unfair cost)", fontsize=11)
-    ax.set_title(f"Eval 6 — Mean Per-Cluster PoF (across {N_RUNS} runs)", fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_mean_bar.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_eval6_cpof_pooled_histogram(summaries: dict[str, dict]) -> None:
@@ -220,13 +220,11 @@ def plot_eval6_cpof_pooled_histogram(summaries: dict[str, dict]) -> None:
                label="C-PoF = 1")
     ax.set_xlabel("C-PoF", fontsize=11)
     ax.set_ylabel("Count (runs × clusters)", fontsize=11)
-    ax.set_title("Eval 6 — Pooled C-PoF Distribution", fontsize=12)
     ax.legend(fontsize=10)
     ax.grid(axis="y", linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_histogram.png", dpi=150, bbox_inches="tight")
-    plt.show()
-
+    plt.close(fig)
 
 def plot_eval6_cpof_spread_gini(summaries: dict[str, dict]) -> None:
     """Box plots of per-run C-PoF spread and Gini coefficient."""
@@ -253,10 +251,9 @@ def plot_eval6_cpof_spread_gini(summaries: dict[str, dict]) -> None:
     ax2.set_title("Per-Run C-PoF Gini", fontsize=11)
     ax2.grid(axis="y", linestyle="--", alpha=0.3)
 
-    fig.suptitle("Eval 6 — C-PoF Inequality Across Runs", fontsize=12)
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_cpof_spread_gini.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
 
 
 def print_eval6_table(summaries: dict[str, dict]) -> None:
@@ -298,7 +295,7 @@ def print_eval6_table(summaries: dict[str, dict]) -> None:
         print(f"  Spread: {np.mean(spreads):.4f} ± {np.std(spreads, ddof=1) if len(spreads) > 1 else 0:.4f}")
         print(f"  Gini:   {np.mean(ginis):.4f} ± {np.std(ginis, ddof=1) if len(ginis) > 1 else 0:.4f}")
 
-    csv_path = "evaluation1-6-7_results.csv"
+    csv_path = "evaluation6_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
@@ -335,13 +332,12 @@ def plot_eval7_gpof_bar(summaries: dict[str, dict]) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(group_names, fontsize=9, rotation=20, ha="right")
     ax.set_ylabel("G-PoF  (group fair cost / group unfair cost)", fontsize=10)
-    ax.set_title("Eval 7 — Per-Group PoF (mean ± std across runs)", fontsize=12)
     ax.legend(fontsize=9)
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_gpof_bar.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
@@ -369,11 +365,10 @@ def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
         patch.set_facecolor(ALG_PALETTE.get(alg, "gray"))
         patch.set_alpha(0.6)
     ax2.set_ylabel("Gini coefficient", fontsize=10)
-    ax2.set_title("Per-Run G-PoF Gini", fontsize=11)
     ax2.grid(axis="y", linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig.savefig("evaluation1-6-7_gpof_gini.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
 
 
 def plot_eval7_gpof_per_run_heatmap(summaries: dict[str, dict]) -> None:
@@ -407,10 +402,9 @@ def plot_eval7_gpof_per_run_heatmap(summaries: dict[str, dict]) -> None:
         ax.set_title(f"{alg}", fontsize=11)
         fig.colorbar(im, ax=ax, shrink=0.8, label="G-PoF")
 
-        fig.suptitle(f"Eval 7 — Per-Run G-PoF Heatmap {alg}", fontsize=12)
         fig.tight_layout()
         fig.savefig(f"evaluation1-6-7-{alg}_gpof_heatmap.png", dpi=150, bbox_inches="tight")
-        plt.show()
+        plt.close(fig)
 
 
 def plot_eval7_group_cost_bar(
@@ -438,7 +432,6 @@ def plot_eval7_group_cost_bar(
         agg = np.mean
         fair_vals = [agg([d[g] for d in all_fc]) for g in group_names]
         unfair_vals = [agg([d[g] for d in all_uc]) for g in group_names]
-
         fair_err = [np.std([d[g] for d in all_fc], ddof=1) for g in group_names]
         unfair_err = [np.std([d[g] for d in all_uc], ddof=1) for g in group_names]
 
@@ -453,18 +446,14 @@ def plot_eval7_group_cost_bar(
         ax.set_xticks(x)
         ax.set_xticklabels(group_names, fontsize=9, rotation=20, ha="right")
         ax.set_ylabel(f"Group total cost ({statistic})", fontsize=10)
-        ax.set_title(alg, fontsize=11)
         ax.legend(fontsize=9, loc="upper left")
         ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
 
-    fig.suptitle(
-        f"Eval 7 — Per-Group Total Cost (Fair vs Unfair, {statistic} across runs)",
-        fontsize=13,
-    )
+
     fig.tight_layout()
     fname = f"eval7_group_cost_{statistic}.png"
     fig.savefig(fname, dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
     print(f"  Saved {fname}")
 
 def print_eval7_table(summaries: dict[str, dict]) -> None:
@@ -507,23 +496,34 @@ def print_eval7_table(summaries: dict[str, dict]) -> None:
         print(f"  Equity Spread: {np.mean(spreads):.4f} ± {np.std(spreads, ddof=1) if len(spreads) > 1 else 0:.4f}")
         print(f"  Gini:          {np.mean(ginis):.4f} ± {np.std(ginis, ddof=1) if len(ginis) > 1 else 0:.4f}")
 
-    csv_path = "evaluation1-6-7_results.csv"
+    csv_path = "evaluation7_results.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
 
 
 if __name__ == "__main__":
-    N_SIZE = 25_000
+    parser = argparse.ArgumentParser(description="Run Fair Clustering Evaluation")
+    parser.add_argument("--csv_path", type=str, default="../../../us_census_puma_data.csv",
+                        help="Path to census dataset")
+    parser.add_argument("--n_size", type=int, default=25000, help="Number of rows for Bera/Bercea/Backurs")
+    parser.add_argument("--n_runs", type=int, default=30, help="Number of runs for Bera/Bercea/Backurs")
+    parser.add_argument("--n_size_boehm", type=int, default=25000, help="Number of rows for Böhm")
+    parser.add_argument("--n_runs_boehm", type=int, default=10, help="Number of runs for Böhm")
+    parser.add_argument("--k", type=int, default=10, help="Number of clusters (k)")
+    args = parser.parse_args()
+
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     GROUP_ID_FEATURES = ["RACE_6"]
     PROTECTED_COL = "GROUP_ID"
-    K = 10
     ALPHA = 0.05
-    N_RUNS = 30
 
-    N_SIZE_BOEHM = 25_000
-    N_RUNS_BOEHM = 10
+    N_SIZE = args.n_size if args.n_size else 25_000
+    K = args.k if args.k else 10
+    N_RUNS = args.n_runs if args.n_runs else 30
+    N_SIZE_BOEHM = args.n_size_boehm if args.n_size_boehm else 25_000
+    N_RUNS_BOEHM = args.n_runs_boehm if args.n_runs_boehm else 10
+    CSV_PATH = args.csv_path if args.csv_path else "../../../us_census_puma_data.csv"
 
     summaries: dict[str, dict] = {}
 
@@ -536,7 +536,7 @@ if __name__ == "__main__":
         result_builder=build_bera_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
-        csv_path="../../../us_census_puma_data.csv",
+        csv_path=CSV_PATH,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_centers=K,
@@ -555,7 +555,7 @@ if __name__ == "__main__":
         result_builder=build_bercea_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
-        csv_path="../../../us_census_puma_data.csv",
+        csv_path=CSV_PATH,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_cluster=K,
@@ -574,7 +574,7 @@ if __name__ == "__main__":
         result_builder=build_boehm_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS_BOEHM,
-        csv_path="../../../us_census_puma_data.csv",
+        csv_path=CSV_PATH,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k=K,
@@ -593,7 +593,7 @@ if __name__ == "__main__":
         result_builder=build_backurs_result,
         group_id_features=GROUP_ID_FEATURES,
         n_runs=N_RUNS,
-        csv_path="../../../us_census_puma_data.csv",
+        csv_path=CSV_PATH,
         feature_cols=FEATURE_COLS,
         protected_group_col=PROTECTED_COL,
         k_cluster=K,

@@ -1,5 +1,0 @@
-Feature,L,DI,Bera_PoF_mean,Bera_PoF_std,Bercea_PoF_mean,Bercea_PoF_std,Backurs_PoF_mean,Backurs_PoF_std,Böhm_PoF_mean,Böhm_PoF_std,Bera_FairCost_mean,Bercea_FairCost_mean,Backurs_FairCost_mean,Böhm_FairCost_mean,Bera_UnfairCost_mean,Bercea_UnfairCost_mean,Backurs_UnfairCost_mean,Böhm_UnfairCost_mean,Bera_Time_mean,Bera_Time_std,Bercea_Time_mean,Bercea_Time_std,Backurs_Time_mean,Backurs_Time_std,Böhm_Time_mean,Böhm_Time_std
-SEX,2,0.0130,1.134027,0.045732,1.068447,0.041269,3.677610,0.700966,1.406930,0.114661,7.67,8.00,31.50,10.48,6.78,7.50,8.75,7.41,0.02,0.01,0.02,0.00,0.01,0.00,0.06,0.01
-RACE_BINARY,2,0.2880,1.205405,0.080344,1.235576,0.049093,3.745052,0.539900,2.173680,0.441731,8.44,10.75,31.96,16.80,6.99,8.67,8.59,7.78,0.02,0.00,0.02,0.00,0.01,0.00,0.04,0.00
-AGE_BIN,4,0.0420,1.228892,0.088398,1.201355,0.154384,3.869792,0.698187,2.210997,0.986602,9.16,9.95,28.27,19.68,7.55,8.44,7.14,9.12,0.03,0.01,0.03,0.01,0.02,0.00,0.06,0.02
-INC_BIN,4,0.0940,1.205465,0.063977,1.192171,0.098845,2.647077,1.443931,1.723181,0.196941,10.81,9.46,25.10,13.74,8.93,8.03,9.22,8.03,0.03,0.01,0.03,0.00,0.03,0.01,0.06,0.01
