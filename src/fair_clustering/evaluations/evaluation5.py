@@ -20,8 +20,8 @@ from fair_clustering.evaluations.evaluation4 import _avg_total_time
 
 from fair_clustering.runner import (run_trials, build_bera_result, build_bercea_result,
                                     build_backurs_result, build_boehm_result)
-#15, 20, 35, 50
-K_VALUES = [3, 5, 10, 20, 50]
+
+K_VALUES = [3, 5, 10, 20, 35, 50]
 FEATURE_CFG = {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.094}
 
 ALGORITHMS = ["Bera", "Bercea", "Backurs", "Böhm"]

@@ -27,8 +27,8 @@ ALG_FUNCTIONS = {
 ALPHAS = [0.01, 0.02, 0.05, 0.10, 0.20]
 
 FEATURE_CONFIGS = [
-    {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.3453},
-    # {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.0983},
+    # {"name": "RACE_6", "group_id_features": ["RACE_6"], "L": 6, "DI": 0.3453},
+    {"name": "INC_BIN", "group_id_features": ["INC_BIN"], "L": 4, "DI": 0.0983},
 ]
 
 ALGORITHMS = ["Bera", "Bercea", "Backurs"]
