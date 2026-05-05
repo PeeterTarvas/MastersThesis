@@ -1,5 +1,16 @@
+import os
+import json
+import argparse
+import matplotlib
+
+# Must be set before importing pyplot for headless DigitalOcean droplet execution
+matplotlib.use("Agg")
+
 import numpy as np
+from pathlib import Path
 from matplotlib import pyplot as plt
+
+from fair_clustering.results_encoder import load_summary, save_summary
 
 from fair_clustering.algorithms.main_bercea_fair_clustering import fair_clustering as bercea_fc
 from fair_clustering.algorithms.main_bera_fair_clustering import fair_clustering as bera_fc
@@ -20,6 +31,13 @@ FEATURE_CONFIGS = [
 ]
 
 ALGORITHMS = ["Bera", "Bercea", "Backurs", "Böhm"]
+
+ALG_FUNCTIONS = {
+    "Bera": (bera_fc, build_bera_result, {"k_centers_kw": "k_centers"}),
+    "Bercea": (bercea_fc, build_bercea_result, {"k_centers_kw": "k_cluster"}),
+    "Backurs": (backurs_fc, build_backurs_result, {"k_centers_kw": "k_cluster"}),
+    "Böhm": (boehm_fc, build_boehm_result, {"k_centers_kw": "k"}),
+}
 
 ALG_PALETTE = {
     "bera": "#4C72B0",
@@ -47,6 +65,21 @@ ALG_PHASE_MAP = {
     "Backurs": BACKURS_PHASES,
     "Böhm": BOEHM_PHASES,
 }
+
+
+def _summary_to_row(summary, feature_cfg, algorithm) -> dict:
+    """Reduce a run_trials summary to the row layout used by the plotting fns."""
+    return {
+        "feature": feature_cfg["name"],
+        "L": feature_cfg["L"],
+        "DI": feature_cfg["DI"],
+        "algorithm": algorithm,
+        "pof_mean": summary["All results PoF (mean)"],
+        "pof_std": summary["All results PoF (std)"],
+        "fair_cost_mean": summary["All results Fair Cost (mean)"],
+        "unfair_cost_mean": summary["All results Unfair Cost (mean)"],
+        "all_timings": summary["_timings"]
+    }
 
 
 def plot_runtime(rows: list[dict]):
@@ -77,18 +110,22 @@ def plot_runtime(rows: list[dict]):
             if mean > 0:
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + std + 0.1,
                         f"{mean:.1f}s", ha="center", va="bottom", fontsize=7, color="dimgray")
+
+    # Feature labels now incorporate L and DI to answer thesis questions directly
+    feature_labels = [f"{f_cfg['name']}\n(L={f_cfg['L']}, DI={f_cfg['DI']:.3f})" for f_cfg in FEATURE_CONFIGS]
+
     ax.set_xticks(x)
-    ax.set_xticklabels(features, fontsize=9, rotation=25, ha="right")
+    ax.set_xticklabels(feature_labels, fontsize=9, rotation=25, ha="right")
     ax.set_ylabel("Total time (s)", fontsize=11)
     ax.legend(fontsize=10)
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
     fig.savefig("evaluation3_runtime_by_feature.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    plt.close(fig)
+    print("  Saved evaluation3_runtime_by_feature.png")
 
-    n_panels = len(algorithms)
     for ax_idx, alg in enumerate(algorithms):
-        fig2, ax2 = plt.subplots(figsize=(7 , 5.5))
+        fig2, ax2 = plt.subplots(figsize=(7, 5.5))
         phases = ALG_PHASE_MAP[alg]
         bottoms = np.zeros(len(features))
         for phase_idx, phase in enumerate(phases):
@@ -104,15 +141,14 @@ def plot_runtime(rows: list[dict]):
                     label=phase, color=color, linewidth=0.3, zorder=3)
             bottoms += np.array(vals_per_feat)
         ax2.set_xticks(x)
-        ax2.set_xticklabels(features, fontsize=9, rotation=25, ha="right")
-        ax2.set_title(f"{alg} — Phase Timings", fontsize=12)
+        ax2.set_xticklabels(feature_labels, fontsize=9, rotation=25, ha="right")
         ax2.set_ylabel("Time (s)" if ax_idx == 0 else "", fontsize=11)
         ax2.legend(fontsize=7, loc="upper left")
         ax2.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
         fig2.tight_layout()
         fig2.savefig(f"evaluation3_{alg}_runtime_by_feature_phases.png", dpi=150, bbox_inches="tight")
-        plt.show()
-        print("  Saved runtime_by_feature_phases.png")
+        plt.close(fig2)
+        print(f"  Saved evaluation3_{alg}_runtime_by_feature_phases.png")
 
 
 def print_feature_table(rows: list[dict]) -> None:
@@ -214,97 +250,104 @@ def plot_pof(rows: list[dict]):
                         f"{m:.3f}", ha="center", va="bottom", fontsize=7, color="dimgray")
 
     ax.axhline(1.0, color='#C44E52', linestyle='--', linewidth=1.5, alpha=0.7, zorder=0, label="PoF = 1")
+
+    feature_labels = [f"{f_cfg['name']}\n(L={f_cfg['L']}, DI={f_cfg['DI']:.3f})" for f_cfg in FEATURE_CONFIGS]
+
     ax.set_xticks(x)
-    ax.set_xticklabels(features, fontsize=9, rotation=25, ha="right")
+    ax.set_xticklabels(feature_labels, fontsize=9, rotation=25, ha="right")
     ax.set_ylabel("Price of Fairness (PoF)", fontsize=11)
     ax.set_ylim(bottom=0.0)
-    all_tops = [r["pof_mean"] + r["pof_std"] for r in rows]
-    ax.set_ylim(top=max(all_tops + [1.0]) * 1.15)
+    all_tops = [r["pof_mean"] + r["pof_std"] for r in rows if "pof_mean" in r]
+    if all_tops:
+        ax.set_ylim(top=max(all_tops + [1.0]) * 1.15)
     ax.legend(fontsize=10, loc="upper left")
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
     fig.savefig("evaluation3_pof_by_feature.png", dpi=150, bbox_inches="tight")
-    plt.show()
-    print("  Saved pof_by_feature.png")
+    plt.close(fig)
+    print("  Saved evaluation3_pof_by_feature.png")
+
 
 if __name__ == "__main__":
-    N_SIZE = 10000
+    parser = argparse.ArgumentParser(description="Run Evaluation 3 (Scaling w/ Colors and POF)")
+    parser.add_argument("--csv_path", type=str,
+                        default="us_census_puma_data.csv",
+                        help="Path to ACS PUMS CSV")
+    parser.add_argument("--n_size", type=int, default=44_000,
+                        help="Sample size n (thesis spec: 44,000 for Race6xSex reqs)")
+    parser.add_argument("--n_runs", type=int, default=30,
+                        help="Independent runs N (thesis spec: 30)")
+    parser.add_argument("--k", type=int, default=10, help="Number of clusters k")
+    parser.add_argument("--alpha", type=float, default=0.05, help="Slack parameter")
+    parser.add_argument("--ckpt_dir", type=str, default="evaluation3_checkpoints",
+                        help="Per-cell checkpoint directory")
+    parser.add_argument("--quick", action="store_true",
+                        help="Smoke-test: tiny n, 2 runs")
+    args = parser.parse_args()
+
+    if args.quick:
+        args.n_size = 500
+        args.n_runs = 2
+        print("[QUICK MODE] n=500, N=2")
+
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
-    K = 10
-    N_RUNS = 10
-    ALPHA = 0.05
+
+    ckpt_dir = Path(args.ckpt_dir)
+    ckpt_dir.mkdir(exist_ok=True)
+
+    print(f"\nConfig: n={args.n_size}, k={args.k}, N={args.n_runs}, α={args.alpha}")
+    print(f"        CSV={args.csv_path}")
+    print(f"        Checkpoint dir={ckpt_dir}\n")
 
     all_rows: list[dict] = []
 
     for cfg in FEATURE_CONFIGS:
-        feat_name = cfg["name"]
-        print(f"\n  FEATURE: {feat_name}  (L={cfg['L']}, DI={cfg['DI']:.3f})")
+        fname = cfg["name"]
+        print(f"  FEATURE: {fname}  (L={cfg['L']}, DI={cfg['DI']:.3f})")
 
-        print(f"\n  Running Bera [2] ...")
-        bera_s = run_trials(
-            max_rows=N_SIZE, algorithm_fn=bera_fc, result_builder=build_bera_result,
-            group_id_features=cfg["group_id_features"], n_runs=N_RUNS, csv_path="../../../us_census_puma_data.csv",
-            feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
-            k_centers=K, alpha=ALPHA, weight_col=None,
-        )
-        all_rows.append({"feature": feat_name, "L": cfg["L"], "DI": cfg["DI"],
-                         "algorithm": "Bera",
-                         "pof_mean": bera_s["All results PoF (mean)"],
-                         "pof_std": bera_s["All results PoF (std)"],
-                         "fair_cost_mean": bera_s["All results Fair Cost (mean)"],
-                         "unfair_cost_mean": bera_s["All results Unfair Cost (mean)"],
-                         "all_timings": bera_s["_timings"]})
+        for alg in ALGORITHMS:
+            cell_id = f"{fname.replace(' ', '_')}_{alg}"
+            cell_path = ckpt_dir / f"{cell_id}.json"
+            print(f"\n  Checking {alg} | {fname} ...")
+            if cell_path.exists():
+                print(f"    -> Loaded from checkpoint: {cell_path}")
+                summary = load_summary(str(cell_path))
+            else:
+                print(f"    -> Running {alg} trials...")
+                fc_fn, builder, kw_map = ALG_FUNCTIONS[alg]
+                extra_kwargs = {kw_map["k_centers_kw"]: args.k}
 
-        print(f"\n  Running Bercea [3] ...")
-        bercea_s = run_trials(
-            max_rows=N_SIZE, algorithm_fn=bercea_fc, result_builder=build_bercea_result,
-            csv_path="../../../us_census_puma_data.csv",
-            group_id_features=cfg["group_id_features"], n_runs=N_RUNS,
-            feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
-            k_cluster=K, alpha=ALPHA, weight_col=None,
-        )
-        all_rows.append({"feature": feat_name, "L": cfg["L"], "DI": cfg["DI"],
-                         "algorithm": "Bercea",
-                         "pof_mean": bercea_s["All results PoF (mean)"],
-                         "pof_std": bercea_s["All results PoF (std)"],
-                         "fair_cost_mean": bercea_s["All results Fair Cost (mean)"],
-                         "unfair_cost_mean": bercea_s["All results Unfair Cost (mean)"],
-                         "all_timings": bercea_s["_timings"]})
+                if alg != "Böhm":
+                    extra_kwargs["alpha"] = args.alpha
+                if alg in ("Bera", "Bercea"):
+                    extra_kwargs["weight_col"] = None
+                if alg == "Böhm":
+                    extra_kwargs["kmedian_trials"] = 3
+                    extra_kwargs["kmedian_max_iter"] = 30
+                    if args.n_runs > 10 and not args.quick:
+                        print(
+                            f"      [WARNING]: Running Böhm with N={args.n_runs} and n={args.n_size} will take significant time.")
 
-        print(f"\n  Running Backurs [1] ...")
-        backurs_s = run_trials(
-            max_rows=N_SIZE, algorithm_fn=backurs_fc, result_builder=build_backurs_result,
-            csv_path="../../../us_census_puma_data.csv",
-            group_id_features=cfg["group_id_features"], n_runs=N_RUNS,
-            feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
-            k_cluster=K, alpha=ALPHA,
-        )
-        all_rows.append({"feature": feat_name, "L": cfg["L"], "DI": cfg["DI"],
-                         "algorithm": "Backurs",
-                         "pof_mean": backurs_s["All results PoF (mean)"],
-                         "pof_std": backurs_s["All results PoF (std)"],
-                         "fair_cost_mean": backurs_s["All results Fair Cost (mean)"],
-                         "unfair_cost_mean": backurs_s["All results Unfair Cost (mean)"],
-                         "all_timings": backurs_s["_timings"]})
+                summary = run_trials(
+                    max_rows=args.n_size,
+                    algorithm_fn=fc_fn,
+                    result_builder=builder,
+                    group_id_features=cfg["group_id_features"],
+                    n_runs=args.n_runs,
+                    csv_path=args.csv_path,
+                    feature_cols=FEATURE_COLS,
+                    protected_group_col=PROTECTED_COL,
+                    **extra_kwargs,
+                )
+                save_summary(summary, str(cell_path))
+                print(f"    -> Saved checkpoint to {cell_path}")
 
+            row = _summary_to_row(summary, cfg, alg)
+            all_rows.append(row)
 
-        boehm_s = run_trials(
-            max_rows=N_SIZE, algorithm_fn=boehm_fc,
-            result_builder=build_boehm_result,
-            group_id_features=cfg["group_id_features"], n_runs=N_RUNS, csv_path="../../../us_census_puma_data.csv",
-            feature_cols=FEATURE_COLS, protected_group_col=PROTECTED_COL,
-            k=K, kmedian_trials=3, kmedian_max_iter=30,
-        )
-        all_rows.append({"feature": feat_name, "L": cfg["L"], "DI": cfg["DI"],
-                         "algorithm": "Böhm",
-                         "pof_mean": boehm_s["All results PoF (mean)"],
-                         "pof_std": boehm_s["All results PoF (std)"],
-                         "fair_cost_mean": boehm_s["All results Fair Cost (mean)"],
-                         "unfair_cost_mean": boehm_s["All results Unfair Cost (mean)"],
-                         "all_timings": boehm_s["_timings"]})
-
-
+    print(f"\n{'=' * 60}\n  Generating Eval 3 plots & tables\n{'=' * 60}")
     plot_runtime(all_rows)
     print_feature_table(all_rows)
     plot_pof(all_rows)
+    print("\nEvaluation 3 complete.")
