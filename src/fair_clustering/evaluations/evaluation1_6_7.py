@@ -336,7 +336,7 @@ def plot_eval7_gpof_bar(summaries: dict[str, dict]) -> None:
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
-    fig.savefig("evaluation1-6-7_gpof_bar.png", dpi=150, bbox_inches="tight")
+    fig.savefig("eval7_gpof_bar_chart.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -355,7 +355,7 @@ def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
     ax1.set_title("Per-Run G-PoF Equity Spread", fontsize=11)
     ax1.grid(axis="y", linestyle="--", alpha=0.3)
     fig.tight_layout()
-    fig.savefig("evaluation1-6-7_gpof_spread.png", dpi=150, bbox_inches="tight")
+    fig.savefig("min_max_spread_g_pof_per_algorithm.png", dpi=150, bbox_inches="tight")
     plt.show()
 
     fig, ax2 = plt.subplots(1, 1, figsize=(12, 5))
@@ -367,7 +367,7 @@ def plot_eval7_gpof_spread_gini(summaries: dict[str, dict]) -> None:
     ax2.set_ylabel("Gini coefficient", fontsize=10)
     ax2.grid(axis="y", linestyle="--", alpha=0.3)
     fig.tight_layout()
-    fig.savefig("evaluation1-6-7_gpof_gini.png", dpi=150, bbox_inches="tight")
+    fig.savefig("gini_pof.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
