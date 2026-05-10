@@ -3,7 +3,6 @@ import json
 import argparse
 import matplotlib
 
-# Must be set before importing pyplot for headless DigitalOcean droplet execution
 matplotlib.use("Agg")
 
 import numpy as np
@@ -29,6 +28,13 @@ FEATURE_CONFIGS = [
     {"name": "AGE_BIN × SEX", "group_id_features": ["AGE_BIN", "SEX"], "L": 8, "DI": 0.040},
     {"name": "RACE_6 × SEX", "group_id_features": ["RACE_6", "SEX"], "L": 12, "DI": 0.311},
 ]
+
+ALG_OVERRIDES = {
+    "Bera": {"skip_features": set()},
+    "Bercea": {"skip_features": set()},
+    "Backurs": {"skip_features": set()},
+    "Böhm": {"skip_features": {"RACE_6 × SEX"}},
+}
 
 ALGORITHMS = ["Bera", "Bercea", "Backurs", "Böhm"]
 
@@ -66,6 +72,12 @@ ALG_PHASE_MAP = {
     "Böhm": BOEHM_PHASES,
 }
 
+
+def _algo_n_and_N(alg: str, args) -> tuple[int, int]:
+    """Return (n_size, n_runs) for this algorithm. Böhm gets the reduced spec."""
+    if alg == "Böhm":
+        return args.n_size_boehm, args.n_runs_boehm
+    return args.n_size, args.n_runs
 
 def _summary_to_row(summary, feature_cfg, algorithm) -> dict:
     """Reduce a run_trials summary to the row layout used by the plotting fns."""
@@ -111,7 +123,6 @@ def plot_runtime(rows: list[dict]):
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + std + 0.1,
                         f"{mean:.1f}s", ha="center", va="bottom", fontsize=7, color="dimgray")
 
-    # Feature labels now incorporate L and DI to answer thesis questions directly
     feature_labels = [f"{f_cfg['name']}\n(L={f_cfg['L']}, DI={f_cfg['DI']:.3f})" for f_cfg in FEATURE_CONFIGS]
 
     ax.set_xticks(x)
@@ -274,21 +285,26 @@ if __name__ == "__main__":
                         default="us_census_puma_data.csv",
                         help="Path to ACS PUMS CSV")
     parser.add_argument("--n_size", type=int, default=44_000,
-                        help="Sample size n (thesis spec: 44,000 for Race6xSex reqs)")
+                        help="Sample size n for Bera/Bercea/Backurs (thesis spec: 44,000)")
     parser.add_argument("--n_runs", type=int, default=30,
-                        help="Independent runs N (thesis spec: 30)")
+                        help="Independent runs N for Bera/Bercea/Backurs (thesis spec: 30)")
+    parser.add_argument("--n_size_boehm", type=int, default=20_000,
+                        help="Reduced sample size n for Böhm")
+    parser.add_argument("--n_runs_boehm", type=int, default=10,
+                        help="Reduced number of runs N for Böhm (default 5)")
     parser.add_argument("--k", type=int, default=10, help="Number of clusters k")
     parser.add_argument("--alpha", type=float, default=0.05, help="Slack parameter")
     parser.add_argument("--ckpt_dir", type=str, default="evaluation3_checkpoints",
                         help="Per-cell checkpoint directory")
     parser.add_argument("--quick", action="store_true",
-                        help="Smoke-test: tiny n, 2 runs")
+                        help="Smoke-test: tiny n, 2 runs (applies to all algorithms)")
     args = parser.parse_args()
 
     if args.quick:
         args.n_size = 500
         args.n_runs = 2
-        print("[QUICK MODE] n=500, N=2")
+        args.n_size_boehm = 500
+        args.n_runs_boehm = 2
 
     FEATURE_COLS = ["Lat_Scaled", "Lon_Scaled"]
     PROTECTED_COL = "GROUP_ID"
@@ -296,9 +312,16 @@ if __name__ == "__main__":
     ckpt_dir = Path(args.ckpt_dir)
     ckpt_dir.mkdir(exist_ok=True)
 
-    print(f"\nConfig: n={args.n_size}, k={args.k}, N={args.n_runs}, α={args.alpha}")
-    print(f"        CSV={args.csv_path}")
-    print(f"        Checkpoint dir={ckpt_dir}\n")
+    print("\n" + "=" * 70)
+    print("  Evaluation 3 configuration")
+    print("=" * 70)
+    print(f"  Bera/Bercea/Backurs : n={args.n_size}, N={args.n_runs} (thesis spec)")
+    print(f"  Böhm                : n={args.n_size_boehm}, N={args.n_runs_boehm} (reduced)")
+    print(f"  Böhm skipped on     : {sorted(ALG_OVERRIDES['Böhm']['skip_features'])}")
+    print(f"  k={args.k}, α={args.alpha}")
+    print(f"  CSV={args.csv_path}")
+    print(f"  Checkpoint dir={ckpt_dir}")
+    print("=" * 70 + "\n")
 
     all_rows: list[dict] = []
 
@@ -307,14 +330,25 @@ if __name__ == "__main__":
         print(f"  FEATURE: {fname}  (L={cfg['L']}, DI={cfg['DI']:.3f})")
 
         for alg in ALGORITHMS:
-            cell_id = f"{fname.replace(' ', '_')}_{alg}"
+            if fname in ALG_OVERRIDES[alg]["skip_features"]:
+                print(f"    [SKIP] {alg} on {fname}: per-algorithm override ")
+                continue
+
+            n_size, n_runs = _algo_n_and_N(alg, args)
+
+            # Cell ID encodes n and N so cells run at different parameters
+            # never collide on disk, previous-run checkpoints without this
+            # suffix will not be picked up and must be migrated manually if
+            # they are still wanted.
+            cell_id = f"{fname.replace(' ', '_')}_{alg}_n{n_size}_N{n_runs}"
             cell_path = ckpt_dir / f"{cell_id}.json"
-            print(f"\n  Checking {alg} | {fname} ...")
+
+            print(f"\n  Checking {alg} | {fname}  (n={n_size}, N={n_runs})")
             if cell_path.exists():
                 print(f"    -> Loaded from checkpoint: {cell_path}")
                 summary = load_summary(str(cell_path))
             else:
-                print(f"    -> Running {alg} trials...")
+                print(f"    -> Running {alg}")
                 fc_fn, builder, kw_map = ALG_FUNCTIONS[alg]
                 extra_kwargs = {kw_map["k_centers_kw"]: args.k}
 
@@ -325,16 +359,13 @@ if __name__ == "__main__":
                 if alg == "Böhm":
                     extra_kwargs["kmedian_trials"] = 3
                     extra_kwargs["kmedian_max_iter"] = 30
-                    if args.n_runs > 10 and not args.quick:
-                        print(
-                            f"      [WARNING]: Running Böhm with N={args.n_runs} and n={args.n_size} will take significant time.")
 
                 summary = run_trials(
-                    max_rows=args.n_size,
+                    max_rows=n_size,
                     algorithm_fn=fc_fn,
                     result_builder=builder,
                     group_id_features=cfg["group_id_features"],
-                    n_runs=args.n_runs,
+                    n_runs=n_runs,
                     csv_path=args.csv_path,
                     feature_cols=FEATURE_COLS,
                     protected_group_col=PROTECTED_COL,

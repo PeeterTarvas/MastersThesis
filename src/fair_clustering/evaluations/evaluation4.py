@@ -104,9 +104,9 @@ def plot_pof_vs_alpha(rows: list[dict], alphas: list[float]) -> None:
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(axis="y", linestyle="--", alpha=0.3, zorder=0)
     fig.tight_layout()
-    fig.savefig("evaluation4_pof_vs_alpha.png", dpi=150, bbox_inches="tight")
+    fig.savefig("evaluation4_pof_vs_alpha_race.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("  Saved evaluation4_pof_vs_alpha.png")
+    print("  Saved evaluation4_pof_vs_alpha_race.png")
 
 
 def plot_runtime_vs_alpha(rows: list[dict]) -> None:
@@ -136,9 +136,9 @@ def plot_runtime_vs_alpha(rows: list[dict]) -> None:
     ax.xaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     fig.tight_layout()
-    fig.savefig("evaluation4_runtime_vs_alpha.png", dpi=150, bbox_inches="tight")
+    fig.savefig("evaluation4_runtime_vs_alpha_race.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print("  Saved evaluation4_runtime_vs_alpha.png")
+    print("  Saved evaluation4_runtime_vs_alpha_race.png")
 
 
 def print_alpha_table(rows: list[dict], alphas: list[float]) -> None:
@@ -201,7 +201,7 @@ def print_alpha_table(rows: list[dict], alphas: list[float]) -> None:
             )
 
     print(sep)
-    csv_path = "evaluation4_results.csv"
+    csv_path = "evaluation4_results_income_race.csv"
     with open(csv_path, "w") as f:
         f.write("\n".join(csv_lines))
     print(f"\n  Results saved to {csv_path}")
