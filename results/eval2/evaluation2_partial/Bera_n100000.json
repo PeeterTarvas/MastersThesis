@@ -11,12 +11,12 @@
   "All results PoF (min)": 1.1036338209805856,
   "All results PoF (max)": 1.1560831599524803,
   "Avg Timing": {
-    "Cost Calculation": 0.007246679999934713,
-    "Data Preparation": 0.007684019999942393,
-    "Iterative Rounding": 2.6845556500000383,
-    "Solve Initial LP": 491.53364742,
-    "Total Time": 496.34899014999974,
-    "Vanilla K-Median": 2.1158453900001404
+    "Cost Calculation": 0.00971178999170661,
+    "Data Preparation": 0.009767420002026484,
+    "Iterative Rounding": 3.5220530400052668,
+    "Solve Initial LP": 32.92013171001454,
+    "Total Time": 39.00635025999509,
+    "Vanilla K-Median": 2.544668619998265
   },
   "G-PoF means": {
     "Non-White": 1.2696159250109829,
@@ -214,84 +214,84 @@
   ],
   "_timings": [
     {
-      "Data Preparation": 0.00815950000014709,
-      "Vanilla K-Median": 2.4916338000002725,
-      "Solve Initial LP": 23.485631999999896,
-      "Iterative Rounding": 2.7087092000001576,
-      "Cost Calculation": 0.007257299999764655,
-      "Total Time": 28.701402699999562
+      "Data Preparation": 0.009699899994302541,
+      "Vanilla K-Median": 3.0028386000194587,
+      "Solve Initial LP": 29.614676699973643,
+      "Iterative Rounding": 2.695827500021551,
+      "Cost Calculation": 0.007682900002691895,
+      "Total Time": 35.3307472000015
     },
     {
-      "Data Preparation": 0.009913499999129272,
-      "Vanilla K-Median": 2.384398500000316,
-      "Solve Initial LP": 23.0796006999999,
-      "Iterative Rounding": 2.7443902000004528,
-      "Cost Calculation": 0.007199300000138464,
-      "Total Time": 28.225513700000192
+      "Data Preparation": 0.007456199964508414,
+      "Vanilla K-Median": 2.8786829999880865,
+      "Solve Initial LP": 33.799006000044756,
+      "Iterative Rounding": 3.4784328999812715,
+      "Cost Calculation": 0.009069599967915565,
+      "Total Time": 40.17266769998241
     },
     {
-      "Data Preparation": 0.007898799999566108,
-      "Vanilla K-Median": 2.118031599999995,
-      "Solve Initial LP": 755.5858936000004,
-      "Iterative Rounding": 2.6395590999991327,
-      "Cost Calculation": 0.006903000000420434,
-      "Total Time": 760.3582962
+      "Data Preparation": 0.006683000014163554,
+      "Vanilla K-Median": 2.2811439000070095,
+      "Solve Initial LP": 33.109066600038204,
+      "Iterative Rounding": 3.960851799987722,
+      "Cost Calculation": 0.012585299962665886,
+      "Total Time": 39.37034439999843
     },
     {
-      "Data Preparation": 0.007145099999434024,
-      "Vanilla K-Median": 1.9962915000005523,
-      "Solve Initial LP": 3961.096023,
-      "Iterative Rounding": 2.649439799999527,
-      "Cost Calculation": 0.008625200000096811,
-      "Total Time": 3965.757538
+      "Data Preparation": 0.011947499995585531,
+      "Vanilla K-Median": 2.351358199957758,
+      "Solve Initial LP": 30.814085100020748,
+      "Iterative Rounding": 3.8645143000176176,
+      "Cost Calculation": 0.009487300005275756,
+      "Total Time": 37.05140900000697
     },
     {
-      "Data Preparation": 0.007125699999960489,
-      "Vanilla K-Median": 1.9058877999996184,
-      "Solve Initial LP": 24.56259669999963,
-      "Iterative Rounding": 2.648729700000331,
-      "Cost Calculation": 0.007013500000539352,
-      "Total Time": 29.131366100000378
+      "Data Preparation": 0.0133108000154607,
+      "Vanilla K-Median": 2.3737336000194773,
+      "Solve Initial LP": 32.40731710003456,
+      "Iterative Rounding": 3.4613821000093594,
+      "Cost Calculation": 0.011059999989811331,
+      "Total Time": 38.26682520000031
     },
     {
-      "Data Preparation": 0.007456199999069213,
-      "Vanilla K-Median": 1.95910510000067,
-      "Solve Initial LP": 25.063008099999934,
-      "Iterative Rounding": 2.643998499999725,
-      "Cost Calculation": 0.00698509999892849,
-      "Total Time": 29.680563099998835
+      "Data Preparation": 0.010438699973747134,
+      "Vanilla K-Median": 2.514711800031364,
+      "Solve Initial LP": 33.686260699993,
+      "Iterative Rounding": 3.5456634999718517,
+      "Cost Calculation": 0.010548599995672703,
+      "Total Time": 39.76763919997029
     },
     {
-      "Data Preparation": 0.007117799999832641,
-      "Vanilla K-Median": 1.803801800000656,
-      "Solve Initial LP": 26.05706569999893,
-      "Iterative Rounding": 2.7192027000000962,
-      "Cost Calculation": 0.007055899999613757,
-      "Total Time": 30.594254899999214
+      "Data Preparation": 0.010354500031098723,
+      "Vanilla K-Median": 2.1281385000329465,
+      "Solve Initial LP": 33.88777840003604,
+      "Iterative Rounding": 3.5840242000413127,
+      "Cost Calculation": 0.00727609999012202,
+      "Total Time": 39.61758479999844
     },
     {
-      "Data Preparation": 0.0073194000015064375,
-      "Vanilla K-Median": 2.361250600000858,
-      "Solve Initial LP": 24.29667100000006,
-      "Iterative Rounding": 2.6699496999990515,
-      "Cost Calculation": 0.007209800000055111,
-      "Total Time": 29.34241060000022
+      "Data Preparation": 0.010194200032856315,
+      "Vanilla K-Median": 2.9476848999620415,
+      "Solve Initial LP": 32.025102699990384,
+      "Iterative Rounding": 3.48437570000533,
+      "Cost Calculation": 0.010009899968281388,
+      "Total Time": 38.47738350002328
     },
     {
-      "Data Preparation": 0.007151399999202113,
-      "Vanilla K-Median": 1.9594970999987709,
-      "Solve Initial LP": 26.96265780000067,
-      "Iterative Rounding": 2.717347100000552,
-      "Cost Calculation": 0.007037700001092162,
-      "Total Time": 31.653700899998512
+      "Data Preparation": 0.00759769999422133,
+      "Vanilla K-Median": 2.4658267999766394,
+      "Solve Initial LP": 36.19045420002658,
+      "Iterative Rounding": 3.563726000022143,
+      "Cost Calculation": 0.009629899985156953,
+      "Total Time": 42.23724749998655
     },
     {
-      "Data Preparation": 0.007552800001576543,
-      "Vanilla K-Median": 2.178556099999696,
-      "Solve Initial LP": 25.14732560000084,
-      "Iterative Rounding": 2.7042305000013585,
-      "Cost Calculation": 0.007179999998697895,
-      "Total Time": 30.044855300000563
+      "Data Preparation": 0.009991700004320592,
+      "Vanilla K-Median": 2.502566899987869,
+      "Solve Initial LP": 33.66756959998747,
+      "Iterative Rounding": 3.5817323999945074,
+      "Cost Calculation": 0.0097683000494726,
+      "Total Time": 39.7716540999827
     }
   ],
   "_all_cpofs": [
