@@ -1,0 +1,403 @@
+
+======================================================================
+  Evaluation 3 configuration
+======================================================================
+  Bera/Bercea/Backurs : n=44000, N=30 (thesis spec)
+  Böhm                : n=25000, N=10 (reduced)
+  Böhm skipped on     : ['RACE_6 × SEX']
+  k=10, α=0.05
+  CSV=us_census_puma_data.csv
+  Checkpoint dir=evaluation3_checkpoints
+======================================================================
+
+  FEATURE: SEX  (L=2, DI=0.013)
+
+  Checking Bera | SEX  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\SEX_Bera_n44000_N30.json
+
+  Checking Bercea | SEX  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\SEX_Bercea_n44000_N30.json
+
+  Checking Backurs | SEX  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\SEX_Backurs_n44000_N30.json
+
+  Checking Böhm | SEX  (n=25000, N=10)
+    -> Loaded from checkpoint: evaluation3_checkpoints\SEX_Böhm_n25000_N10.json
+  FEATURE: RACE_BINARY  (L=2, DI=0.288)
+
+  Checking Bera | RACE_BINARY  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_BINARY_Bera_n44000_N30.json
+
+  Checking Bercea | RACE_BINARY  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_BINARY_Bercea_n44000_N30.json
+
+  Checking Backurs | RACE_BINARY  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_BINARY_Backurs_n44000_N30.json
+
+  Checking Böhm | RACE_BINARY  (n=25000, N=10)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_BINARY_Böhm_n25000_N10.json
+  FEATURE: AGE_BIN  (L=4, DI=0.042)
+
+  Checking Bera | AGE_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\AGE_BIN_Bera_n44000_N30.json
+
+  Checking Bercea | AGE_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\AGE_BIN_Bercea_n44000_N30.json
+
+  Checking Backurs | AGE_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\AGE_BIN_Backurs_n44000_N30.json
+
+  Checking Böhm | AGE_BIN  (n=25000, N=10)
+    -> Loaded from checkpoint: evaluation3_checkpoints\AGE_BIN_Böhm_n25000_N10.json
+  FEATURE: INC_BIN  (L=4, DI=0.094)
+
+  Checking Bera | INC_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\INC_BIN_Bera_n44000_N30.json
+
+  Checking Bercea | INC_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\INC_BIN_Bercea_n44000_N30.json
+
+  Checking Backurs | INC_BIN  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\INC_BIN_Backurs_n44000_N30.json
+
+  Checking Böhm | INC_BIN  (n=25000, N=10)
+    -> Loaded from checkpoint: evaluation3_checkpoints\INC_BIN_Böhm_n25000_N10.json
+  FEATURE: RACE_6  (L=6, DI=0.343)
+
+  Checking Bera | RACE_6  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_6_Bera_n44000_N30.json
+
+  Checking Bercea | RACE_6  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_6_Bercea_n44000_N30.json
+
+  Checking Backurs | RACE_6  (n=44000, N=30)
+    -> Loaded from checkpoint: evaluation3_checkpoints\RACE_6_Backurs_n44000_N30.json
+
+  Checking Böhm | RACE_6  (n=25000, N=10)
+    -> Running Böhm
+  Run 1/10  | boehm 
+  Run 2/10  | boehm 
+  Run 3/10  | boehm 
+  Run 4/10  | boehm 
+  Run 5/10  | boehm 
+  Run 6/10  | boehm 
+  Run 7/10  | boehm 
+  Run 8/10  | boehm 
+  Run 9/10  | boehm 
+  Run 10/10  | boehm 
+Saved summary → evaluation3_checkpoints\RACE_6_Böhm_n25000_N10.json
+    -> Saved checkpoint to evaluation3_checkpoints\RACE_6_Böhm_n25000_N10.json
+  FEATURE: AGE_BIN × SEX  (L=8, DI=0.040)
+
+  Checking Bera | AGE_BIN × SEX  (n=44000, N=30)
+    -> Running Bera
+  Run 1/30  | bera 
+  Run 2/30  | bera 
+  Run 3/30  | bera 
+  Run 4/30  | bera 
+  Run 5/30  | bera 
+  Run 6/30  | bera 
+  Run 7/30  | bera 
+  Run 8/30  | bera 
+  Run 9/30  | bera 
+  Run 10/30  | bera 
+  Run 11/30  | bera 
+  Run 12/30  | bera 
+  Run 13/30  | bera 
+  Run 14/30  | bera 
+  Run 15/30  | bera 
+  Run 16/30  | bera 
+  Run 17/30  | bera 
+  Run 18/30  | bera 
+  Run 19/30  | bera 
+  Run 20/30  | bera 
+  Run 21/30  | bera 
+  Run 22/30  | bera 
+  Run 23/30  | bera 
+  Run 24/30  | bera 
+  Run 25/30  | bera 
+  Run 26/30  | bera 
+  Run 27/30  | bera 
+  Run 28/30  | bera 
+  Run 29/30  | bera 
+  Run 30/30  | bera 
+Saved summary → evaluation3_checkpoints\AGE_BIN_×_SEX_Bera_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\AGE_BIN_×_SEX_Bera_n44000_N30.json
+
+  Checking Bercea | AGE_BIN × SEX  (n=44000, N=30)
+    -> Running Bercea
+  Run 1/30  | bercea 
+  Run 2/30  | bercea 
+  Run 3/30  | bercea 
+  Run 4/30  | bercea 
+  Run 5/30  | bercea 
+  Run 6/30  | bercea 
+  Run 7/30  | bercea 
+  Run 8/30  | bercea 
+  Run 9/30  | bercea 
+  Run 10/30  | bercea 
+  Run 11/30  | bercea 
+  Run 12/30  | bercea 
+  Run 13/30  | bercea 
+  Run 14/30  | bercea 
+  Run 15/30  | bercea 
+  Run 16/30  | bercea 
+  Run 17/30  | bercea 
+  Run 18/30  | bercea 
+  Run 19/30  | bercea 
+  Run 20/30  | bercea 
+  Run 21/30  | bercea 
+  Run 22/30  | bercea 
+  Run 23/30  | bercea 
+  Run 24/30  | bercea 
+  Run 25/30  | bercea 
+  Run 26/30  | bercea 
+  Run 27/30  | bercea 
+  Run 28/30  | bercea 
+  Run 29/30  | bercea 
+  Run 30/30  | bercea 
+Saved summary → evaluation3_checkpoints\AGE_BIN_×_SEX_Bercea_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\AGE_BIN_×_SEX_Bercea_n44000_N30.json
+
+  Checking Backurs | AGE_BIN × SEX  (n=44000, N=30)
+    -> Running Backurs
+[Backurs] All 6675 fairlets satisfy (8,1)-balance.
+  Run 1/30  | backurs 
+[Backurs] All 7036 fairlets satisfy (8,1)-balance.
+  Run 2/30  | backurs 
+[Backurs] All 6892 fairlets satisfy (8,1)-balance.
+  Run 3/30  | backurs 
+[Backurs] All 6923 fairlets satisfy (8,1)-balance.
+  Run 4/30  | backurs 
+[Backurs] All 6737 fairlets satisfy (8,1)-balance.
+  Run 5/30  | backurs 
+[Backurs] All 7011 fairlets satisfy (8,1)-balance.
+  Run 6/30  | backurs 
+[Backurs] All 7052 fairlets satisfy (8,1)-balance.
+  Run 7/30  | backurs 
+[Backurs] All 6703 fairlets satisfy (8,1)-balance.
+  Run 8/30  | backurs 
+[Backurs] All 6842 fairlets satisfy (8,1)-balance.
+  Run 9/30  | backurs 
+[Backurs] All 6992 fairlets satisfy (8,1)-balance.
+  Run 10/30  | backurs 
+[Backurs] All 6960 fairlets satisfy (8,1)-balance.
+  Run 11/30  | backurs 
+[Backurs] All 6948 fairlets satisfy (8,1)-balance.
+  Run 12/30  | backurs 
+[Backurs] All 6667 fairlets satisfy (8,1)-balance.
+  Run 13/30  | backurs 
+[Backurs] All 6890 fairlets satisfy (8,1)-balance.
+  Run 14/30  | backurs 
+[Backurs] All 7008 fairlets satisfy (8,1)-balance.
+  Run 15/30  | backurs 
+[Backurs] All 6920 fairlets satisfy (8,1)-balance.
+  Run 16/30  | backurs 
+[Backurs] All 6954 fairlets satisfy (8,1)-balance.
+  Run 17/30  | backurs 
+[Backurs] All 6962 fairlets satisfy (8,1)-balance.
+  Run 18/30  | backurs 
+[Backurs] All 7068 fairlets satisfy (8,1)-balance.
+  Run 19/30  | backurs 
+[Backurs] All 6687 fairlets satisfy (8,1)-balance.
+  Run 20/30  | backurs 
+[Backurs] All 6711 fairlets satisfy (8,1)-balance.
+  Run 21/30  | backurs 
+[Backurs] All 7027 fairlets satisfy (8,1)-balance.
+  Run 22/30  | backurs 
+[Backurs] All 6971 fairlets satisfy (8,1)-balance.
+  Run 23/30  | backurs 
+[Backurs] All 7090 fairlets satisfy (8,1)-balance.
+  Run 24/30  | backurs 
+[Backurs] All 6989 fairlets satisfy (8,1)-balance.
+  Run 25/30  | backurs 
+[Backurs] All 6996 fairlets satisfy (8,1)-balance.
+  Run 26/30  | backurs 
+[Backurs] All 7180 fairlets satisfy (7,1)-balance.
+  Run 27/30  | backurs 
+[Backurs] All 7069 fairlets satisfy (8,1)-balance.
+  Run 28/30  | backurs 
+[Backurs] All 7169 fairlets satisfy (7,1)-balance.
+  Run 29/30  | backurs 
+[Backurs] All 6649 fairlets satisfy (8,1)-balance.
+  Run 30/30  | backurs 
+Saved summary → evaluation3_checkpoints\AGE_BIN_×_SEX_Backurs_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\AGE_BIN_×_SEX_Backurs_n44000_N30.json
+
+  Checking Böhm | AGE_BIN × SEX  (n=25000, N=10)
+    -> Running Böhm
+  Run 1/10  | boehm 
+  Run 2/10  | boehm 
+  Run 3/10  | boehm 
+  Run 4/10  | boehm 
+  Run 5/10  | boehm 
+  Run 6/10  | boehm 
+  Run 7/10  | boehm 
+  Run 8/10  | boehm 
+  Run 9/10  | boehm 
+  Run 10/10  | boehm 
+Saved summary → evaluation3_checkpoints\AGE_BIN_×_SEX_Böhm_n25000_N10.json
+    -> Saved checkpoint to evaluation3_checkpoints\AGE_BIN_×_SEX_Böhm_n25000_N10.json
+  FEATURE: RACE_6 × SEX  (L=12, DI=0.311)
+
+  Checking Bera | RACE_6 × SEX  (n=44000, N=30)
+    -> Running Bera
+  Run 1/30  | bera 
+  Run 2/30  | bera 
+  Run 3/30  | bera 
+  Run 4/30  | bera 
+  Run 5/30  | bera 
+  Run 6/30  | bera 
+  Run 7/30  | bera 
+  Run 8/30  | bera 
+  Run 9/30  | bera 
+  Run 10/30  | bera 
+  Run 11/30  | bera 
+  Run 12/30  | bera 
+  Run 13/30  | bera 
+  Run 14/30  | bera 
+  Run 15/30  | bera 
+  Run 16/30  | bera 
+  Run 17/30  | bera 
+  Run 18/30  | bera 
+  Run 19/30  | bera 
+  Run 20/30  | bera 
+  Run 21/30  | bera 
+  Run 22/30  | bera 
+  Run 23/30  | bera 
+  Run 24/30  | bera 
+  Run 25/30  | bera 
+  Run 26/30  | bera 
+  Run 27/30  | bera 
+  Run 28/30  | bera 
+  Run 29/30  | bera 
+  Run 30/30  | bera 
+Saved summary → evaluation3_checkpoints\RACE_6_×_SEX_Bera_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\RACE_6_×_SEX_Bera_n44000_N30.json
+
+  Checking Bercea | RACE_6 × SEX  (n=44000, N=30)
+    -> Running Bercea
+  Run 1/30  | bercea 
+  Run 2/30  | bercea 
+  Run 3/30  | bercea 
+  Run 4/30  | bercea 
+  Run 5/30  | bercea 
+  Run 6/30  | bercea 
+  Run 7/30  | bercea 
+  Run 8/30  | bercea 
+  Run 9/30  | bercea 
+  Run 10/30  | bercea 
+  Run 11/30  | bercea 
+  Run 12/30  | bercea 
+  Run 13/30  | bercea 
+  Run 14/30  | bercea 
+  Run 15/30  | bercea 
+  Run 16/30  | bercea 
+  Run 17/30  | bercea 
+  Run 18/30  | bercea 
+  Run 19/30  | bercea 
+  Run 20/30  | bercea 
+  Run 21/30  | bercea 
+  Run 22/30  | bercea 
+  Run 23/30  | bercea 
+  Run 24/30  | bercea 
+  Run 25/30  | bercea 
+  Run 26/30  | bercea 
+  Run 27/30  | bercea 
+  Run 28/30  | bercea 
+  Run 29/30  | bercea 
+  Run 30/30  | bercea 
+Saved summary → evaluation3_checkpoints\RACE_6_×_SEX_Bercea_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\RACE_6_×_SEX_Bercea_n44000_N30.json
+
+  Checking Backurs | RACE_6 × SEX  (n=44000, N=30)
+    -> Running Backurs
+[Backurs] All 41975 fairlets satisfy (10,1)-balance.
+  Run 1/30  | backurs 
+[Backurs] All 41898 fairlets satisfy (10,1)-balance.
+  Run 2/30  | backurs 
+[Backurs] All 41962 fairlets satisfy (10,1)-balance.
+  Run 3/30  | backurs 
+[Backurs] All 42014 fairlets satisfy (10,1)-balance.
+  Run 4/30  | backurs 
+[Backurs] All 42009 fairlets satisfy (10,1)-balance.
+  Run 5/30  | backurs 
+[Backurs] All 41985 fairlets satisfy (10,1)-balance.
+  Run 6/30  | backurs 
+[Backurs] All 41964 fairlets satisfy (10,1)-balance.
+  Run 7/30  | backurs 
+[Backurs] All 41939 fairlets satisfy (10,1)-balance.
+  Run 8/30  | backurs 
+[Backurs] All 41958 fairlets satisfy (10,1)-balance.
+  Run 9/30  | backurs 
+[Backurs] All 42044 fairlets satisfy (10,1)-balance.
+  Run 10/30  | backurs 
+[Backurs] All 42021 fairlets satisfy (10,1)-balance.
+  Run 11/30  | backurs 
+[Backurs] All 41938 fairlets satisfy (10,1)-balance.
+  Run 12/30  | backurs 
+[Backurs] All 41995 fairlets satisfy (10,1)-balance.
+  Run 13/30  | backurs 
+[Backurs] All 41983 fairlets satisfy (10,1)-balance.
+  Run 14/30  | backurs 
+[Backurs] All 42042 fairlets satisfy (10,1)-balance.
+  Run 15/30  | backurs 
+[Backurs] All 41991 fairlets satisfy (10,1)-balance.
+  Run 16/30  | backurs 
+[Backurs] All 41937 fairlets satisfy (10,1)-balance.
+  Run 17/30  | backurs 
+[Backurs] All 41935 fairlets satisfy (10,1)-balance.
+  Run 18/30  | backurs 
+[Backurs] All 41966 fairlets satisfy (10,1)-balance.
+  Run 19/30  | backurs 
+[Backurs] All 41961 fairlets satisfy (10,1)-balance.
+  Run 20/30  | backurs 
+[Backurs] All 41977 fairlets satisfy (10,1)-balance.
+  Run 21/30  | backurs 
+[Backurs] All 41940 fairlets satisfy (10,1)-balance.
+  Run 22/30  | backurs 
+[Backurs] All 41970 fairlets satisfy (10,1)-balance.
+  Run 23/30  | backurs 
+[Backurs] All 42025 fairlets satisfy (10,1)-balance.
+  Run 24/30  | backurs 
+[Backurs] All 41996 fairlets satisfy (10,1)-balance.
+  Run 25/30  | backurs 
+[Backurs] All 42004 fairlets satisfy (10,1)-balance.
+  Run 26/30  | backurs 
+[Backurs] All 42018 fairlets satisfy (10,1)-balance.
+  Run 27/30  | backurs 
+[Backurs] All 41955 fairlets satisfy (10,1)-balance.
+  Run 28/30  | backurs 
+[Backurs] All 42007 fairlets satisfy (10,1)-balance.
+  Run 29/30  | backurs 
+[Backurs] All 42003 fairlets satisfy (10,1)-balance.
+  Run 30/30  | backurs 
+Saved summary → evaluation3_checkpoints\RACE_6_×_SEX_Backurs_n44000_N30.json
+    -> Saved checkpoint to evaluation3_checkpoints\RACE_6_×_SEX_Backurs_n44000_N30.json
+    [SKIP] Böhm on RACE_6 × SEX: per-algorithm override 
+
+============================================================
+  Generating Eval 3 plots & tables
+============================================================
+  Saved evaluation3_runtime_by_feature.png
+  Saved evaluation3_Bera_runtime_by_feature_phases.png
+  Saved evaluation3_Bercea_runtime_by_feature_phases.png
+  Saved evaluation3_Backurs_runtime_by_feature_phases.png
+  Saved evaluation3_Böhm_runtime_by_feature_phases.png
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+Feature              L     DI          Bera PoF        Bercea PoF       Backurs PoF          Böhm PoF     Bera Time   Bercea Time  Backurs Time     Böhm Time
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+SEX                  2  0.013     1.0000±0.0001     1.0000±0.0001     3.1522±0.0828     1.0135±0.0349      7.8±0.3s     10.8±0.3s      3.5±0.2s    95.3±24.2s
+RACE_BINARY          2  0.288     1.1229±0.0164     1.1229±0.0164     3.0513±0.0861     1.8048±0.2138      9.3±0.4s     12.4±0.4s      3.3±0.2s  2418.0±803.6s
+AGE_BIN              4  0.042     1.0001±0.0003     1.0001±0.0003     2.8559±0.0743     1.0635±0.0376     21.7±0.5s     28.1±0.6s     23.3±0.6s   480.1±39.9s
+INC_BIN              4  0.094     1.0001±0.0002     1.0001±0.0002     3.2243±0.0859     1.1746±0.0951     14.7±3.7s     19.7±4.3s     11.9±0.8s   592.4±30.4s
+RACE_6               6  0.343     1.1303±0.0171     1.1305±0.0172     3.0513±0.0861     2.5499±0.1086     15.9±0.7s     18.8±0.7s     12.7±0.3s  26481.0±3312.9s
+AGE_BIN × SEX        8  0.040     1.0000±0.0000     1.0000±0.0000     3.6887±0.0951     1.0739±0.0449     15.7±0.2s     17.7±0.3s     16.2±0.2s   190.6±14.0s
+RACE_6 × SEX        12  0.311     1.0565±0.0121     1.0565±0.0121     1.1183±0.0361                 —     25.6±4.4s     27.2±4.2s     19.7±0.3s             —
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+  Results saved to evaluation3_results.csv
+  Saved evaluation3_pof_by_feature.png
+
+Evaluation 3 complete.
